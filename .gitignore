@@ -1,0 +1,11 @@
+# Objetos
+*.o
+
+# Executáveis
+server
+*.out
+*.exe
+
+# Arquivos ocultos
+.*
+!.gitignore
