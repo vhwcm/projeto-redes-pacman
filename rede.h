@@ -12,11 +12,11 @@ typedef struct
     uint8_t num_sequencia : 6;
     uint8_t tipo : 5;
     uint8_t *dados;
-    uint8_t crc : 8;
 } Mensagem;
 
 char *montaMensagem(Mensagem *mensagem);
 void desmontaMensagem(const char *mensagem, Mensagem *protocolo);
 int cria_raw_socket(char *nome_interface_rede);
+void enviaMensagem(Mensagem *mensagem, int soquete);
 
 #endif
