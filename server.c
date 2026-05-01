@@ -4,7 +4,9 @@
 #include "labirinto.h"
 #include "rede.h"
 
-void enviarVisualizacao(int soquete, int labirinto[MAP_SIZE][MAP_SIZE]);
+void enviarVisualizacao(int soquete, unsigned int labirinto[MAP_SIZE][MAP_SIZE]);
+int leProtocoloMontaMensagem(Mensagem *mensagem, unsigned char bytes[2048], unsigned int *i, int soquete);
+
 int main(int argc, char *argv[])
 {
     if (argc < 2)
@@ -57,13 +59,18 @@ int main(int argc, char *argv[])
             if (buffer[i] == MARCA_INICIO)
             {
                 i++;
-                uint8_t tamanho = buffer[i + 1] >> 3;
-                uint8_t num_sequencia = (buffer[i + 1] << 5) & (buffer[i + 2] >> 5);
-                uint8_t tipo = ((buffer[i + 2] << 3) >> 3);
+                Mensagem *mensagem = criaMensagemDoServidor();
+                unsigned int tipo = leProtocoloMontaMensagem(mensagem, bytes, &i, soquete);
                 switch (tipo)
                 {
                 case 2:
-                    enviarLabirinto(soquete, gameState->labirinto);
+                    enviarVisualizacao(soquete, gameState->labirinto);
+                    break;
+                case 10:
+                case 11:
+                case 12:
+                case 13:
+                    movimentaPacMan(soquete);
                     break;
 
                 default:
@@ -75,13 +82,45 @@ int main(int argc, char *argv[])
     return 0;
 }
 
-void enviarVisualizacao(int soquete, int labirinto[MAP_SIZE][MAP_SIZE])
+void enviarVisualizacao(int soquete, unsigned int labirinto[MAP_SIZE][MAP_SIZE])
 {
-    Mensagem *mensagem = malloc(sizeof(Mensagem));
+    Mensagem *mensagem = criaMensagemDoServidor();
     mensagem->num_sequencia = 0;
     mensagem->tamanho = LABIRINTO_SIZE;
     mensagem->tipo = 2;
     mensagem->dados = labirinto;
 
     enviaMensagem(mensagem, soquete);
+}
+
+// retorna o tipo da mensagem e monta a mensagem. retorna -1 em caso de erro
+int leProtocoloMontaMensagem(Mensagem *mensagem, unsigned char bytes[2048], unsigned int *i, int soquete)
+{
+    (*i)++;
+    Mensagem *mensagem = criaMensagemDoServidor();
+    uint8_t tamanho = buffer[*i + 1] >> 3;
+    uint8_t numSequencia = (buffer[*i + 1] << 5) & (buffer[*i + 2] >> 5);
+    uint8_t tipo = ((buffer[*i + 2] << 3) >> 3);
+    Mensagem *mensagem = criaMensagemDoServidor();
+    mensagem->tamanho = tamanho;
+    mensagem->num_sequencia = numSequencia;
+    mensagem->tipo = tipo;
+    if (tamanho > 0)
+    {
+        mensagem->dados = malloc(sizeof(tamanho));
+        if (verifica_crc8(mensagem->dados, mensagem->tamanho, mensagem->crc))
+        {
+            if (mensagem->num_sequencia % 4 == 0)
+            {
+                enviarAK(mensagem, soquete);
+            }
+        }
+        else
+        {
+            enviarNAK(mensagem, soquete);
+            return -1;
+        }
+    }
+    (*i) += 3;
+    return tipo;
 }

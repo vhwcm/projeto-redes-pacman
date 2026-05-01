@@ -33,20 +33,20 @@ int verifica_crc8(const uint8_t *dados, int tamanho, uint8_t crc_recebido)
     return crc_calc == crc_recebido;
 }
 
-char *montaMensagem(Mensagem *protocolo)
+char *montaProtocolo(Mensagem *mensagem)
 {
-    int tamanhoMensagem = (MIN_MENSAGE_SIZE) + (protocolo->tamanho >> 3);
-    char *mensagem = malloc(tamanhoMensagem + MIN_MENSAGE_SIZE);
-    mensagem[0] = MARCA_INICIO;
-    mensagem[1] = (protocolo->tamanho << 3) | (protocolo->num_sequencia >> 3);
-    mensagem[2] = ((protocolo->num_sequencia & 0x07) << 5) | (protocolo->tipo & 0x1F);
+    int tamanhoMensagem = (MIN_MENSAGE_SIZE) + (mensagem->tamanho >> 3);
+    char *protocolo = malloc(tamanhoMensagem + MIN_MENSAGE_SIZE);
+    protocolo[0] = MARCA_INICIO;
+    protocolo[1] = (mensagem->tamanho << 3) | (mensagem->num_sequencia >> 3);
+    protocolo[2] = ((mensagem->num_sequencia & 0x07) << 5) | (mensagem->tipo & 0x1F);
     for (int i = 0; i < tamanhoMensagem; i++)
     {
-        mensagem[i + 3] = protocolo->dados[i];
+        protocolo[i + 3] = mensagem->dados[i];
     }
 
     unsigned int crc = calcula_crc8((uint8_t *)&mensagem[1], tamanhoMensagem + 2);
-    mensagem[tamanhoMensagem + 3] = crc;
+    protocolo[tamanhoMensagem + 3] = crc;
     return mensagem;
 }
 
@@ -146,4 +146,38 @@ int mensagemVemDoServidor(unsigned valor)
         return 0;
         break;
     }
+}
+
+void enviarAK(Mensagem *mensagem, int soquete)
+{
+    mensagem->tipo = 0;
+    mensagem->tamanho = 1;
+    mensagem->dados = malloc(mensagem->tamanho);
+    mensagem->dados[0] = mensagem->mensagemDoServidor;
+    char *protocolo = montaMensagem(mensagem);
+    enviaMensagem(mensagem, soquete);
+}
+
+void enviarNAK(Mensagem *mensagem, int soquete)
+{
+    mensagem->tipo = 1;
+    mensagem->tamanho = 1;
+    mensagem->dados = malloc(mensagem->tamanho);
+    mensagem->dados[0] = mensagem->mensagemDoServidor;
+    char *protocolo = montaMensagem(mensagem);
+    enviaMensagem(mensagem, soquete);
+}
+
+Mensagem *criaMensagemDoServidor()
+{
+    Mensagem *mensagem = malloc(sizeof(Mensagem));
+    mensagem->mensagemDoServidor = 1;
+    return mensagem;
+}
+
+Mensagem *criaMensagemDoCliente()
+{
+    Mensagem *mensagem = malloc(sizeof(Mensagem));
+    mensagem->mensagemDoServidor = 0;
+    return mensagem;
 }
