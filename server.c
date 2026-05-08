@@ -1,8 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "labirinto.h"
 #include "rede.h"
+
 
 void enviarVisualizacao(int soquete, unsigned int labirinto[MAP_SIZE][MAP_SIZE]);
 int leProtocoloMontaMensagem(Mensagem *mensagem, unsigned char bytes[2048], unsigned int *i, int soquete);
@@ -16,6 +18,11 @@ int main(int argc, char *argv[])
     }
 
     char *nome_rede = argv[1];
+
+    int modo_loopback = 0;
+    if (strcmp(nome_rede, "lo") == 0) {
+        modo_loopback = 1;
+    }
 
     GameState *gameState = malloc(sizeof(GameState));
     unsigned int labirinto[MAP_SIZE][MAP_SIZE];
@@ -47,6 +54,7 @@ int main(int argc, char *argv[])
     unsigned char buffer[2048];
     unsigned int soquete = cria_raw_socket(nome_rede);
     unsigned int bytes;
+    int descartar_proxima_msg = 0;
 
     while (1)
     {
@@ -59,8 +67,18 @@ int main(int argc, char *argv[])
             if (buffer[i] == MARCA_INICIO)
             {
                 i++;
+                if (modo_loopback && descartar_proxima_msg) {
+                    descartar_proxima_msg = 0;
+                    continue;
+                }
+                
                 Mensagem *mensagem = criaMensagemDoServidor();
                 unsigned int tipo = leProtocoloMontaMensagem(mensagem, bytes, &i, soquete);
+                
+                if (modo_loopback) {
+                    descartar_proxima_msg = 1;
+                }
+                
                 switch (tipo)
                 {
                 case 2:
@@ -93,7 +111,18 @@ void enviarVisualizacao(int soquete, unsigned int labirinto[MAP_SIZE][MAP_SIZE])
     enviaMensagem(mensagem, soquete);
 }
 
-// retorna o tipo da mensagem e monta a mensagem. retorna -1 em caso de erro
+void movimentaPacMan(int soquete)
+{
+    Mensagem *mensagem = criaMensagemDoServidor();
+    mensagem->num_sequencia = 1;
+    mensagem->tamanho = 1;
+    mensagem->tipo = 3;
+    uint8_t dados[1] = {1}; 
+    mensagem->dados = dados;
+
+    enviaMensagem(mensagem, soquete);
+}
+
 int leProtocoloMontaMensagem(Mensagem *mensagem, unsigned char bytes[2048], unsigned int *i, int soquete)
 {
     (*i)++;
