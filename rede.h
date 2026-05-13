@@ -12,6 +12,7 @@ typedef struct
     uint8_t num_sequencia : 6;
     uint8_t tipo : 5;
     uint8_t *dados;
+    uint8_t crc;
     uint8_t mensagemDoServidor; // boleano que indica quando o a mensagem vem do servidor ou do cliente
 } Mensagem;
 
@@ -22,6 +23,6 @@ void enviaMensagem(Mensagem *mensagem, int soquete);
 void enviarAK(Mensagem *mensagem, int soquete);
 void enviarNAK(Mensagem *mensagem, int soquete);
 Mensagem *criaMensagemDoCliente();
-Mensagem *criaMensagemDoServidor()
+Mensagem *criaMensagemDoServidor();
 
 #endif

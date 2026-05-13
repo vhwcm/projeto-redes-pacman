@@ -1,11 +1,14 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
+#include <string.h>
+#include <sys/socket.h>
 
 #include "labirinto.h"
 #include "rede.h"
 
-void enviarVisualizacao(int soquete, unsigned int labirinto[MAP_SIZE][MAP_SIZE]);
-int leProtocoloMontaMensagem(Mensagem *mensagem, unsigned char bytes[2048], unsigned int *i, int soquete);
+void enviarVisualizacao(int soquete, int labirinto[MAP_SIZE][MAP_SIZE]);
+int leProtocoloMontaMensagem(Mensagem *mensagem, unsigned char bytes[2048], int *i, int soquete);
 
 int main(int argc, char *argv[])
 {
@@ -18,7 +21,7 @@ int main(int argc, char *argv[])
     char *nome_rede = argv[1];
 
     GameState *gameState = malloc(sizeof(GameState));
-    unsigned int labirinto[MAP_SIZE][MAP_SIZE];
+    int labirinto[MAP_SIZE][MAP_SIZE];
 
     if (argc == 3)
     {
@@ -46,7 +49,7 @@ int main(int argc, char *argv[])
     iniciaLabirinto(labirinto);
     unsigned char buffer[2048];
     unsigned int soquete = cria_raw_socket(nome_rede);
-    unsigned int bytes;
+    ssize_t bytes;
 
     while (1)
     {
@@ -60,9 +63,12 @@ int main(int argc, char *argv[])
             {
                 i++;
                 Mensagem *mensagem = criaMensagemDoServidor();
-                unsigned int tipo = leProtocoloMontaMensagem(mensagem, bytes, &i, soquete);
+                int tipo = leProtocoloMontaMensagem(mensagem, buffer, &i, soquete);
                 switch (tipo)
                 {
+                case 0:
+                    enviarVisualizacao(soquete, gameState->labirinto);
+                    break;
                 case 2:
                     enviarVisualizacao(soquete, gameState->labirinto);
                     break;
@@ -82,32 +88,32 @@ int main(int argc, char *argv[])
     return 0;
 }
 
-void enviarVisualizacao(int soquete, unsigned int labirinto[MAP_SIZE][MAP_SIZE])
+void enviarVisualizacao(int soquete, int labirinto[MAP_SIZE][MAP_SIZE])
 {
     Mensagem *mensagem = criaMensagemDoServidor();
     mensagem->num_sequencia = 0;
     mensagem->tamanho = LABIRINTO_SIZE;
     mensagem->tipo = 2;
-    mensagem->dados = labirinto;
+    mensagem->dados = (uint8_t *)labirinto;
 
     enviaMensagem(mensagem, soquete);
 }
 
 // retorna o tipo da mensagem e monta a mensagem. retorna -1 em caso de erro
-int leProtocoloMontaMensagem(Mensagem *mensagem, unsigned char bytes[2048], unsigned int *i, int soquete)
+int leProtocoloMontaMensagem(Mensagem *mensagem, unsigned char bytes[2048], int *i, int soquete)
 {
     (*i)++;
-    Mensagem *mensagem = criaMensagemDoServidor();
-    uint8_t tamanho = buffer[*i + 1] >> 3;
-    uint8_t numSequencia = (buffer[*i + 1] << 5) & (buffer[*i + 2] >> 5);
-    uint8_t tipo = ((buffer[*i + 2] << 3) >> 3);
-    Mensagem *mensagem = criaMensagemDoServidor();
+    uint8_t tamanho = bytes[*i + 1] >> 3;
+    uint8_t numSequencia = (bytes[*i + 1] << 5) & (bytes[*i + 2] >> 5);
+    uint8_t tipo = ((bytes[*i + 2] << 3) >> 3);
     mensagem->tamanho = tamanho;
     mensagem->num_sequencia = numSequencia;
     mensagem->tipo = tipo;
     if (tamanho > 0)
     {
-        mensagem->dados = malloc(sizeof(tamanho));
+        mensagem->dados = malloc(tamanho);
+        memcpy(mensagem->dados, &bytes[*i + 3], tamanho);
+        mensagem->crc = bytes[*i + 3 + tamanho];
         if (verifica_crc8(mensagem->dados, mensagem->tamanho, mensagem->crc))
         {
             if (mensagem->num_sequencia % 4 == 0)
@@ -121,6 +127,11 @@ int leProtocoloMontaMensagem(Mensagem *mensagem, unsigned char bytes[2048], unsi
             return -1;
         }
     }
-    (*i) += 3;
+    (*i) += 3 + tamanho + 1;
     return tipo;
+}
+
+void movimentaPacMan(int soquete)
+{
+    (void)soquete;
 }

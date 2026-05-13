@@ -33,7 +33,7 @@ int verifica_crc8(const uint8_t *dados, int tamanho, uint8_t crc_recebido)
     return crc_calc == crc_recebido;
 }
 
-char *montaProtocolo(Mensagem *mensagem)
+char *montaMensagem(Mensagem *mensagem)
 {
     int tamanhoMensagem = (MIN_MENSAGE_SIZE) + (mensagem->tamanho >> 3);
     char *protocolo = malloc(tamanhoMensagem + MIN_MENSAGE_SIZE);
@@ -47,14 +47,14 @@ char *montaProtocolo(Mensagem *mensagem)
 
     unsigned int crc = calcula_crc8((uint8_t *)&mensagem[1], tamanhoMensagem + 2);
     protocolo[tamanhoMensagem + 3] = crc;
-    return mensagem;
+    return protocolo;
 }
 
 int desmontaMensagem(const char *mensagem, Mensagem *protocolo)
 {
     if (mensagem[0] != MARCA_INICIO)
     {
-        return;
+        return 0;
     }
 
     protocolo->tamanho = (mensagem[1] >> 3) & 0x1F;
