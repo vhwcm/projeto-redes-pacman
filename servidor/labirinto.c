@@ -60,7 +60,7 @@ GameState* criaGameState()
     gameState->vida = VIDA_INICIAL;
     
     printf("GameState criado com sucesso! Vidas: %d\n", gameState->vida);
-    printf("Posição inicial do Pac-Man: (%d, %d)\n", gameState->pacmanPosX, gameState->pacmanPosY);
+    printf("Posição inicial do Pac-Man: (%d, %d)\n", gameState->artefatosPosX[0], gameState->artefatosPosY[0]);
     
     return gameState;
 }
@@ -105,7 +105,7 @@ void carregaPosicoesLabirinto(int labirinto[MAP_SIZE][MAP_SIZE], GameState *game
         {
             x = rand() % MAP_SIZE;
             y = rand() % MAP_SIZE;
-        } while (labirinto[x][y] != 0);
+        } while (labirinto[x][y] != '0');
         labirinto[x][y] = artefatos[pos];
         posicionaAretefatoNoGameState(x, y, artefatos[pos], gameState);
         pos++;

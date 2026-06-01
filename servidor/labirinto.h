@@ -21,7 +21,5 @@ void carregaPosicoesLabirinto(int labirinto[MAP_SIZE][MAP_SIZE], GameState *game
 void posicionaAretefatoNoGameState(int x, int y, char a, GameState *gameState);
 void printa_labirinto(int labirinto[MAP_SIZE][MAP_SIZE]);
 GameState* criaGameState();
-void enviarNAK(int soquete, int numSequencia, int servidorOuCliente);
-void enviarAK(int soquete, int numSequencia, int servidorOuCliente);
 
 #endif
