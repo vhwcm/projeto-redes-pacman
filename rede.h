@@ -4,7 +4,10 @@
 #include <stdint.h>
 
 #define MIN_MENSAGE_SIZE 4
-#define MARCA_INICIO 0b01111110 // 7E em hexadecimal
+#define MARCA_INICIO 0b01111110
+#define ETHERNET_HEADER_SIZE 14
+#define ETHERNET_MIN_FRAME_SIZE 60
+#define TAM_MAXIMO_MENSAGEM 31
 
 typedef struct
 {

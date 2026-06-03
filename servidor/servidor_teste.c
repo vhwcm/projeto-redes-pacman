@@ -12,7 +12,7 @@
 #include <net/ethernet.h>
 #include <arpa/inet.h>
 
-#include "rede.h"
+#include "../rede.h"
 
 #define LOG_MAX   500
 #define INPUT_MAX 256

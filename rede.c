@@ -39,8 +39,9 @@ int verifica_crc8(const uint8_t *dados, int tamanho, uint8_t crc_recebido)
 char *montaMensagem(Mensagem *mensagem)
 {
     int tamanhoDados = mensagem->tamanho;
-    char *protocolo = malloc(tamanhoDados + MIN_MENSAGE_SIZE);
+    int tamanho_protocolo = tamanhoDados + MIN_MENSAGE_SIZE;
 
+    char *protocolo = malloc(tamanho_protocolo);
     protocolo[0] = MARCA_INICIO;
     protocolo[1] = ((uint8_t)mensagem->tamanho << 3) | (mensagem->num_sequencia >> 3);
     protocolo[2] = ((mensagem->num_sequencia & 0x07) << 5) | (mensagem->tipo & 0x1F);
@@ -48,8 +49,9 @@ char *montaMensagem(Mensagem *mensagem)
     {
         protocolo[i + 3] = mensagem->dados[i];
     }
-    uint8_t crc = calcula_crc8((uint8_t *)&protocolo[1], tamanhoDados + 2);
+    uint8_t crc = calcula_crc8(mensagem->dados, tamanhoDados);
     protocolo[tamanhoDados + 3] = crc;
+
     return protocolo;
 }
 
@@ -122,48 +124,34 @@ int cria_raw_socket(char *nome_interface_rede)
 
 void enviaMensagem(Mensagem *mensagem, int soquete)
 {
-    struct sockaddr_ll endereco = {0};
-    socklen_t len = sizeof(endereco);
-    if (getsockname(soquete, (struct sockaddr *)&endereco, &len) == -1) {
-        perror("ERROR: getsockname");
-        return;
+    Mensagem *frameMensagem = criaMensagemDoServidor();
+
+    int quantFrames = mensagem->tamanho / TAM_MAXIMO_MENSAGEM;
+    int tamUltimoFrame = mensagem->tamanho % TAM_MAXIMO_MENSAGEM;
+    frameMensagem->tipo = mensagem->tipo;
+    int tamanho = mensagem->tamanho + MIN_MENSAGE_SIZE;
+    for (int i = 0; i < quantFrames; i++) {
+        frameMensagem->dados = &mensagem->dados[i*TAM_MAXIMO_MENSAGEM];
+        frameMensagem->tamanho = TAM_MAXIMO_MENSAGEM;
+        if (i == quantFrames -1 ) {
+            frameMensagem->tamanho = tamUltimoFrame;
+        }
+        frameMensagem->num_sequencia = i;
+        char* frame = montaMensagem(frameMensagem);
+        ssize_t sent = send(soquete, frame, tamanho, 0);
+        if (sent < 0) {
+            perror("ERROR: send");
+        } else {
+            printf("Enviados %zd de %d bytes\n", sent, tamanho);
+        }
     }
+    frameMensagem->tipo = 16;
+    frameMensagem->tamanho = 0;
+    frameMensagem->num_sequencia = quantFrames;
+    char* protocoloFinalização = montaMensagem(frameMensagem);
+    send(soquete, protocoloFinalização, tamanho, 0);
 
-    char *payload = montaMensagem(mensagem);
-    int tamanho_payload = MIN_MENSAGE_SIZE + mensagem->tamanho;
-
-    // Tamanho total do frame (14 bytes de header Ethernet + payload)
-    int tamanho_frame = 14 + tamanho_payload;
-    int tamanho_envio = (tamanho_frame < 60) ? 60 : tamanho_frame; // Padding para tamanho mínimo Ethernet
-
-    char *frame = calloc(1, tamanho_envio);
-    
-    unsigned char mac_destino[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-    // Copia MAC Destino (6 bytes)
-    memcpy(frame, mac_destino, 6);
-    // Copia MAC Origem (6 bytes, dummy)
-    memset(frame + 6, 0x00, 6);
-    // Define EtherType (ex: 0x88B5 - Experimental)
-    frame[12] = 0x88;
-    frame[13] = 0xB5;
-    
-    // Copia o protocolo construído para dentro do frame
-    memcpy(frame + 14, payload, tamanho_payload);
-
-    endereco.sll_halen = 6;
-    memcpy(endereco.sll_addr, mac_destino, 6);
-
-    ssize_t sent = sendto(soquete, frame, tamanho_envio, 0, (struct sockaddr *)&endereco, sizeof(endereco));
-    if (sent < 0) {
-        perror("ERROR: sendto");
-        free(payload);
-        free(frame);
-        return;
-    }
-    printf("Enviados %zd de %d bytes\n", sent, tamanho_envio);
-
-    free(payload);
-    free(frame);
+    free(frameMensagem);
 }
 
 

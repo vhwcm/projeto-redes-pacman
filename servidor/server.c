@@ -8,7 +8,7 @@
 #include <arpa/inet.h>
 
 #include "labirinto.h"
-#include "rede.h"
+#include "../rede.h"
 
 
 void enviarVisualizacao(int soquete, int labirinto[MAP_SIZE][MAP_SIZE]);
