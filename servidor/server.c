@@ -2,13 +2,22 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
-#include <poll.h>
+#include <sys/time.h>
 #include <linux/if_packet.h>
 #include <net/ethernet.h>
 #include <arpa/inet.h>
 
 #include "labirinto.h"
 #include "../rede.h"
+
+#define ACK_TIMEOUT_MS 200
+
+static long long timestamp_ms(void)
+{
+    struct timeval tp;
+    gettimeofday(&tp, NULL);
+    return (long long)tp.tv_sec * 1000 + tp.tv_usec / 1000;
+}
 
 
 void enviarVisualizacao(int soquete, int labirinto[MAP_SIZE][MAP_SIZE]);
@@ -18,7 +27,6 @@ void movimentaPacMan(int soquete, int tipo, int labirinto[MAP_SIZE][MAP_SIZE], G
 int leProtocoloMontaMensagem(Mensagem *mensagem, unsigned char buffer[2048], int *i, int soquete);
 void meu_log(char* mensagem);
 
-static uint8_t next_seq_send = 0;
 static uint8_t expected_seq_recv = 0;
 static int ack_counter = 0;
 
@@ -69,35 +77,32 @@ int main(int argc, char *argv[])
         buffer[i] = 0;
     }
     unsigned int soquete = cria_raw_socket(nome_rede);
-    ssize_t bytes;
 
-    struct pollfd fds[1];
-    fds[0].fd = soquete;
-    fds[0].events = POLLIN;
+    struct timeval tv;
+    tv.tv_sec  = 0;
+    tv.tv_usec = ACK_TIMEOUT_MS * 1000;
+    setsockopt(soquete, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+    long long ultimo_ack_ts = timestamp_ms();
 
     while (1)
     {
-        int ret = poll(fds, 1, 1000); // 1s timeout
-        
-        if (ret == 0) {
-            // Timeout de 1s sem receber nada
-            if (expected_seq_recv > 0 || ack_counter > 0) {
-                printf("Timeout de 1s! Enviando NAK para sequencia esperada %d\n", expected_seq_recv);
-                enviarNAK(expected_seq_recv, soquete);
-            }
-            continue;
-        } else if (ret < 0) {
-            perror("Erro no poll");
-            break;
-        }
 
         struct sockaddr_ll from;
         socklen_t fromlen = sizeof(from);
-        bytes = recvfrom(soquete, buffer, sizeof(buffer), 0, (struct sockaddr *)&from, &fromlen);
+        ssize_t bytes = recvfrom(soquete, buffer, sizeof(buffer), 0, (struct sockaddr *)&from, &fromlen);
+
+        long long agora = timestamp_ms();
+        if (agora - ultimo_ack_ts >= ACK_TIMEOUT_MS && ack_counter > 0) {
+            printf("Timeout 200ms! Enviando AK cumulativo para seq %d\n", (expected_seq_recv + 63) % 64);
+            enviarAK((expected_seq_recv + 63) % 64, soquete);
+            ack_counter = 0;
+            ultimo_ack_ts = agora;
+        }
+
         if (bytes <= 0)
             continue;
 
-        // No loopback, ignoramos ecos de transmissão no loopback
         if (modo_loopback && from.sll_pkttype == PACKET_OUTGOING)
             continue;
 
@@ -110,9 +115,9 @@ int main(int argc, char *argv[])
                 int offset = 1;
                 if (i + offset + 1 < bytes) {
                     uint8_t tamanho = buffer[i + offset] >> 3;
-                    if (i + offset + 2 + tamanho < bytes) {
+                    if (i + offset + 2 + (int)tamanho < (int)bytes) {
                         uint8_t crc = buffer[i + offset + 2 + tamanho];
-                        if (verifica_crc8(&buffer[i + offset], tamanho + 2, crc)) {
+                        if (verifica_crc8(&buffer[i + offset + 2], tamanho, crc)) {
                             encontrado = 1;
                         }
                     }
@@ -121,7 +126,7 @@ int main(int argc, char *argv[])
 
             if (encontrado)
             {
-                Mensagem *mensagemCliente = criaMensagemDoCliente();
+                Mensagem *mensagemCliente = criaMensagem();
                 unsigned int tipo = leProtocoloMontaMensagem(mensagemCliente, buffer, &i, soquete);
                 
                 // ACKs e NAKs (mensagens de controle)
@@ -137,11 +142,13 @@ int main(int argc, char *argv[])
                     printf("Mensagem recebida na sequencia correta: %d\n", expected_seq_recv);
                     expected_seq_recv = (expected_seq_recv + 1) % 64;
                     ack_counter++;
-                    
-                    if (ack_counter >= 10) {
+                    ultimo_ack_ts = timestamp_ms();
+
+                    if (ack_counter >= 4) {
                         printf("Enviando AK (cumulativo) para sequencia %d\n", (expected_seq_recv + 63) % 64);
                         enviarAK((expected_seq_recv + 63) % 64, soquete);
                         ack_counter = 0;
+                        ultimo_ack_ts = timestamp_ms();
                     }
 
                     switch (tipo)
@@ -184,26 +191,14 @@ void enviarVisualizacao(int soquete, int labirinto[MAP_SIZE][MAP_SIZE])
         }
     }
 
-    int sent_bytes = 0;
-    while (sent_bytes < MAP_SIZE * MAP_SIZE) {
-        int chunk_size = (MAP_SIZE * MAP_SIZE - sent_bytes > 31) ? 31 : (MAP_SIZE * MAP_SIZE - sent_bytes);
-        
-        Mensagem *msg = criaMensagemDoServidor();
-        msg->tipo = 2;
-        msg->num_sequencia = next_seq_send;
-        next_seq_send = (next_seq_send + 1) % 64;
-        
-        msg->tamanho = chunk_size;
-        msg->dados = malloc(chunk_size);
-        memcpy(msg->dados, total_data + sent_bytes, chunk_size);
-        
-        enviaMensagem(msg, soquete);
-        
-        free(msg->dados);
-        free(msg);
-        
-        sent_bytes += chunk_size;
-    }
+    Mensagem *msg = criaMensagem();
+    msg->tipo    = 2;
+    msg->tamanho = MAP_SIZE * MAP_SIZE;
+    msg->dados   = total_data;
+
+    enviaMensagem(msg, soquete);
+
+    free(msg);
 }
 
 void realizaMovimento(int labirinto[MAP_SIZE][MAP_SIZE], int novaPosX, int novaPosY, GameState *gameState)
@@ -324,7 +319,7 @@ void movimentaPacMan(int soquete, int tipo, int labirinto[MAP_SIZE][MAP_SIZE], G
 
     printf("Movimento processado!\n");
 
-    Mensagem *mensagem = criaMensagemDoServidor();
+    Mensagem *mensagem = criaMensagem();
     mensagem->num_sequencia = 1;
     mensagem->tamanho = 1;
     mensagem->tipo = 3;

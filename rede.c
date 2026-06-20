@@ -7,11 +7,19 @@
 #include <arpa/inet.h>
 #include <net/if.h>
 #include <unistd.h>
-
+#include <sys/time.h>
 
 #include "rede.h"
 
 int modo_loopback = 0;
+static uint8_t seq_global_send = 0;
+
+long long timestamp_ms(void)
+{
+    struct timeval tp;
+    gettimeofday(&tp, NULL);
+    return (long long)tp.tv_sec * 1000 + tp.tv_usec / 1000;
+}
 
 uint8_t calcula_crc8(const uint8_t *dados, int tamanho)
 {
@@ -71,9 +79,9 @@ int desmontaMensagem(const char *mensagem, Mensagem *protocolo)
     {
         protocolo->dados[i] = mensagem[i + 3];
     }
-    unsigned int crc = mensagem[tamanhoMensagem + 3];
+    unsigned int crc = (unsigned char)mensagem[tamanhoMensagem + 3];
 
-    if (!verifica_crc8((uint8_t *)&mensagem[1], tamanhoMensagem + 2, crc))
+    if (!verifica_crc8((uint8_t *)&mensagem[3], tamanhoMensagem, crc))
     {
         fprintf(stderr, "CRC inválido! Mensagem corrompida.\n");
         return 0;
@@ -124,34 +132,42 @@ int cria_raw_socket(char *nome_interface_rede)
 
 void enviaMensagem(Mensagem *mensagem, int soquete)
 {
-    Mensagem *frameMensagem = criaMensagemDoServidor();
+    int totalDados = mensagem->tamanho;
+    int offset = 0;
 
-    int quantFrames = mensagem->tamanho / TAM_MAXIMO_MENSAGEM;
-    int tamUltimoFrame = mensagem->tamanho % TAM_MAXIMO_MENSAGEM;
-    frameMensagem->tipo = mensagem->tipo;
-    int tamanho = mensagem->tamanho + MIN_MENSAGE_SIZE;
-    for (int i = 0; i < quantFrames; i++) {
-        frameMensagem->dados = &mensagem->dados[i*TAM_MAXIMO_MENSAGEM];
-        frameMensagem->tamanho = TAM_MAXIMO_MENSAGEM;
-        if (i == quantFrames -1 ) {
-            frameMensagem->tamanho = tamUltimoFrame;
-        }
-        frameMensagem->num_sequencia = i;
-        char* frame = montaMensagem(frameMensagem);
-        ssize_t sent = send(soquete, frame, tamanho, 0);
-        if (sent < 0) {
-            perror("ERROR: send");
-        } else {
-            printf("Enviados %zd de %d bytes\n", sent, tamanho);
-        }
+    while (offset < totalDados) {
+        int chunkSize = totalDados - offset;
+        if (chunkSize > TAM_MAXIMO_MENSAGEM)
+            chunkSize = TAM_MAXIMO_MENSAGEM;
+
+        Mensagem *frame = criaMensagem();
+        frame->tipo          = mensagem->tipo;
+        frame->num_sequencia = seq_global_send;
+        seq_global_send      = (seq_global_send + 1) % 64;
+        frame->tamanho       = chunkSize;
+        frame->dados         = mensagem->dados + offset;
+
+        char *raw = montaMensagem(frame);
+        int frameTam = chunkSize + MIN_MENSAGE_SIZE;
+        ssize_t sent = send(soquete, raw, frameTam, 0);
+        if (sent < 0)
+            perror("ERROR: enviaMensagem send");
+
+        free(raw);
+        free(frame);
+        offset += chunkSize;
     }
-    frameMensagem->tipo = 16;
-    frameMensagem->tamanho = 0;
-    frameMensagem->num_sequencia = quantFrames;
-    char* protocoloFinalização = montaMensagem(frameMensagem);
-    send(soquete, protocoloFinalização, tamanho, 0);
 
-    free(frameMensagem);
+    Mensagem *fim = criaMensagem();
+    fim->tipo          = 16;
+    fim->num_sequencia = seq_global_send;
+    seq_global_send    = (seq_global_send + 1) % 64;
+    fim->tamanho       = 0;
+    fim->dados         = NULL;
+    char *rawFim = montaMensagem(fim);
+    send(soquete, rawFim, MIN_MENSAGE_SIZE, 0);
+    free(rawFim);
+    free(fim);
 }
 
 
@@ -178,42 +194,34 @@ void printaMensagem(Mensagem *mensagem)
 
 void enviarAK(uint8_t seq, int soquete)
 {
-    Mensagem *ack = criaMensagemDoServidor();
-    ack->tipo = 1;
-    ack->num_sequencia = seq;
-    ack->tamanho = 1;
-    ack->dados = malloc(1);
-    ack->dados[0] = 0;
-    enviaMensagem(ack, soquete);
-    free(ack->dados);
-    free(ack);
+    Mensagem ack;
+    ack.tipo          = 1;
+    ack.num_sequencia = seq;
+    ack.tamanho       = 0;
+    ack.dados         = NULL;
+    char *raw = montaMensagem(&ack);
+    send(soquete, raw, MIN_MENSAGE_SIZE, 0);
+    free(raw);
 }
 
 void enviarNAK(uint8_t seq, int soquete)
 {
-    Mensagem *nak = criaMensagemDoServidor();
-    nak->tipo = 15;
-    nak->num_sequencia = seq;
-    nak->tamanho = 1;
-    nak->dados = malloc(1);
-    nak->dados[0] = 0;
-    enviaMensagem(nak, soquete);
-    free(nak->dados);
-    free(nak);
+    Mensagem nak;
+    nak.tipo          = 15;
+    nak.num_sequencia = seq;
+    nak.tamanho       = 0;
+    nak.dados         = NULL;
+    char *raw = montaMensagem(&nak);
+    send(soquete, raw, MIN_MENSAGE_SIZE, 0);
+    free(raw);
 }
 
-Mensagem *criaMensagemDoServidor()
+Mensagem *criaMensagem()
 {
     Mensagem *mensagem = malloc(sizeof(Mensagem));
     mensagem->num_sequencia = 0;
-    mensagem->tipo = 0;
-    mensagem->tamanho = 0;
-    mensagem->dados = NULL;
-    return mensagem;
-}
-
-Mensagem *criaMensagemDoCliente()
-{
-    Mensagem *mensagem = malloc(sizeof(Mensagem));
+    mensagem->tipo          = 0;
+    mensagem->tamanho       = 0;
+    mensagem->dados         = NULL;
     return mensagem;
 }

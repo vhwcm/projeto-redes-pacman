@@ -6,10 +6,12 @@ TEST_BIN = servidor_teste
 PROJECT ?= projeto-redes-pacman
 TAR_NAME ?= $(PROJECT).tar.gz
 
-SRC = server.c labirinto.c rede.c
-OBJ = $(SRC:.c=.o)
-TEST_SRC = servidor_teste.c rede.c
-TEST_OBJ = $(TEST_SRC:.c=.o)
+VPATH = ..
+
+SRC = server.c labirinto.c ../rede.c
+OBJ = server.o labirinto.o rede.o
+TEST_SRC = servidor_teste.c ../rede.c
+TEST_OBJ = servidor_teste.o rede.o
 
 .PHONY: all clean package
 
@@ -20,6 +22,9 @@ $(BIN): $(OBJ)
 
 $(TEST_BIN): $(TEST_OBJ)
 	$(CC) $(CFLAGS) $(TEST_OBJ) -o $(TEST_BIN) -lncurses -lpthread
+
+rede.o: ../rede.c ../rede.h
+	$(CC) $(CFLAGS) -c ../rede.c -o rede.o
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@

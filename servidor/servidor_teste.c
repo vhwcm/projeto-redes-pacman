@@ -6,6 +6,7 @@
 #include <ctype.h>
 #include <unistd.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <ncurses.h>
 #include <pthread.h>
 #include <linux/if_packet.h>
@@ -16,6 +17,14 @@
 
 #define LOG_MAX   500
 #define INPUT_MAX 256
+#define ACK_TIMEOUT_MS 200
+
+static long long timestamp_ms(void)
+{
+    struct timeval tp;
+    gettimeofday(&tp, NULL);
+    return (long long)tp.tv_sec * 1000 + tp.tv_usec / 1000;
+}
 
 static char   log_buf[LOG_MAX][256];
 static int    log_count = 0;
@@ -26,6 +35,7 @@ static int     soquete_global;
 static uint8_t num_seq_send = 0;
 static uint8_t expected_seq_recv = 0;
 static int     ack_counter = 0;
+static long long ultimo_ack_ts = 0;
 
 static WINDOW *win_log;
 static WINDOW *win_status;
@@ -81,10 +91,25 @@ static void *thread_receber(void *arg)
     unsigned char buffer[2048];
     (void)arg;
 
+    struct timeval tv;
+    tv.tv_sec  = 0;
+    tv.tv_usec = ACK_TIMEOUT_MS * 1000;
+    setsockopt(soquete_global, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
     while (1) {
         struct sockaddr_ll from;
         socklen_t fromlen = sizeof(from);
         ssize_t bytes = recvfrom(soquete_global, buffer, sizeof(buffer), 0, (struct sockaddr *)&from, &fromlen);
+
+        long long agora = timestamp_ms();
+        if (agora - ultimo_ack_ts >= ACK_TIMEOUT_MS && ack_counter > 0) {
+            uint8_t ack_seq = (expected_seq_recv + 63) % 64;
+            enviarAK(ack_seq, soquete_global);
+            log_add("[SENT] AK timeout 200ms seq=%d", ack_seq);
+            ack_counter = 0;
+            ultimo_ack_ts = agora;
+        }
+
         if (bytes <= 0) continue;
 
         // Ignora ecos de transmissão no loopback
@@ -100,7 +125,7 @@ static void *thread_receber(void *arg)
                     uint8_t tamanho = buffer[i + offset] >> 3;
                     if (i + offset + 2 + tamanho < (int)bytes) {
                         uint8_t crc = buffer[i + offset + 2 + tamanho];
-                        if (verifica_crc8(&buffer[i + offset], tamanho + 2, crc)) {
+                        if (verifica_crc8(&buffer[i + offset + 2], tamanho, crc)) {
                             encontrado = 1;
                         }
                     }
@@ -133,12 +158,14 @@ static void *thread_receber(void *arg)
                 
                 expected_seq_recv = (expected_seq_recv + 1) % 64;
                 ack_counter++;
-                
-                if (ack_counter >= 10) {
+                ultimo_ack_ts = timestamp_ms();
+
+                if (ack_counter >= 4) {
                     uint8_t ack_seq = (expected_seq_recv + 63) % 64;
                     enviarAK(ack_seq, soquete_global);
                     log_add("[SENT] AK cumulativo seq=%d", ack_seq);
                     ack_counter = 0;
+                    ultimo_ack_ts = timestamp_ms();
                 }
             } else {
                 log_add("[ERR] Sequencia incorreta! Esperado=%d Recebido=%d. Enviando NAK.", expected_seq_recv, seq);
@@ -153,30 +180,34 @@ static void *thread_receber(void *arg)
 
 static void envia_msg(int tipo, const char *dados_str)
 {
-    Mensagem *msg = criaMensagemDoCliente();
-    msg->tipo          = tipo;
-    msg->num_sequencia = num_seq_send++;
-    msg->num_sequencia %= 64;
+    Mensagem msg;
+    msg.tipo          = tipo;
+    msg.num_sequencia = num_seq_send;
+    num_seq_send      = (num_seq_send + 1) % 64;
 
     if (dados_str && strlen(dados_str) > 0) {
-        int len       = strlen(dados_str);
-        msg->tamanho  = len;
-        msg->dados    = malloc(len);
-        memcpy(msg->dados, dados_str, len);
+        int len      = strlen(dados_str);
+        msg.tamanho  = len > TAM_MAXIMO_MENSAGEM ? TAM_MAXIMO_MENSAGEM : len;
+        msg.dados    = (uint8_t *)dados_str;
     } else {
-        msg->tamanho  = 1;
-        msg->dados    = malloc(1);
-        msg->dados[0] = 0;
+        msg.tamanho  = 0;
+        msg.dados    = NULL;
     }
 
-    enviaMensagem(msg, soquete_global);
-    log_add("[SENT] tipo=%2d seq=%2d tam=%d  dados=\"%s\"",
-            msg->tipo, msg->num_sequencia, msg->tamanho,
-            dados_str ? dados_str : "");
+    char *raw = montaMensagem(&msg);
+    int frameTam = msg.tamanho + MIN_MENSAGE_SIZE;
+    ssize_t sent = send(soquete_global, raw, frameTam, 0);
+    free(raw);
 
-    free(msg->dados);
-    free(msg);
+    if (sent < 0) {
+        log_add("[ERR] Falha no send: tipo=%d seq=%d", tipo, (num_seq_send + 63) % 64);
+    } else {
+        log_add("[SENT] tipo=%2d seq=%2d tam=%d  dados=\"%s\"",
+                tipo, (num_seq_send + 63) % 64, msg.tamanho,
+                dados_str ? dados_str : "");
+    }
 }
+
 
 static void desenha_status(const char *nome_rede)
 {
@@ -200,6 +231,7 @@ int main(int argc, char *argv[])
     char *nome_rede = argv[1];
     modo_loopback   = (strcmp(nome_rede, "lo") == 0);
     soquete_global  = cria_raw_socket(nome_rede);
+    ultimo_ack_ts   = timestamp_ms();
 
     initscr();
     cbreak();
