@@ -21,7 +21,7 @@ $(BIN): $(OBJ)
 	$(CC) $(CFLAGS) $(OBJ) -o $(BIN)
 
 $(TEST_BIN): $(TEST_OBJ)
-	$(CC) $(CFLAGS) $(TEST_OBJ) -o $(TEST_BIN) -lncurses -lpthread
+	$(CC) $(CFLAGS) $(TEST_OBJ) -o $(TEST_BIN)
 
 rede.o: ../rede.c ../rede.h
 	$(CC) $(CFLAGS) -c ../rede.c -o rede.o

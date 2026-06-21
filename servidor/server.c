@@ -6,6 +6,7 @@
 #include <linux/if_packet.h>
 #include <net/ethernet.h>
 #include <arpa/inet.h>
+#include <unistd.h>
 
 #include "labirinto.h"
 #include "../rede.h"
@@ -20,12 +21,15 @@ static long long timestamp_ms(void)
 }
 
 
-void enviarVisualizacao(int soquete, int labirinto[MAP_SIZE][MAP_SIZE]);
+void enviarVisualizacao(int soquete, char labirinto[MAP_SIZE][MAP_SIZE]);
 void printaMensagem(Mensagem *mensagem);
-void realizaMovimento(int labirinto[MAP_SIZE][MAP_SIZE], int novaPosX, int novaPosY, GameState *gameState);
-void movimentaPacMan(int soquete, int tipo, int labirinto[MAP_SIZE][MAP_SIZE], GameState *gameState);
+char realizaMovimento(char labirinto[MAP_SIZE][MAP_SIZE], int novaPosX, int novaPosY, GameState *gameState);
+void movimentaPacMan(int soquete, int tipo, char labirinto[MAP_SIZE][MAP_SIZE], GameState *gameState);
+void movimentaFantasmas(int soquete, char labirinto[MAP_SIZE][MAP_SIZE], GameState *gameState);
+void enviarArquivo(int soquete, const char *caminho, uint8_t tipo);
+void enviaGameOver(int soquete);
 int leProtocoloMontaMensagem(Mensagem *mensagem, unsigned char buffer[2048], int *i, int soquete);
-void meu_log(char* mensagem);
+void meu_log(char *mensagem);
 
 static uint8_t expected_seq_recv = 0;
 static int ack_counter = 0;
@@ -129,11 +133,17 @@ int main(int argc, char *argv[])
                 Mensagem *mensagemCliente = criaMensagem();
                 unsigned int tipo = leProtocoloMontaMensagem(mensagemCliente, buffer, &i, soquete);
                 
-                if (modo_loopback && pacotes_para_ignorar > 0) {
-                    free(mensagemCliente->dados);
-                    free(mensagemCliente);
-                    pacotes_para_ignorar--;
-                    continue;
+                if (modo_loopback) {
+                    if (tipo == 0 || tipo == 1 || tipo == 5 || tipo == 6 || tipo == 7 || tipo == 14 || tipo == 16) {
+                        free(mensagemCliente->dados);
+                        free(mensagemCliente);
+                        continue; // Nosso próprio pacote (eco do servidor)
+                    }
+                    if (tipo == 2 && mensagemCliente->tamanho > 0) {
+                        free(mensagemCliente->dados);
+                        free(mensagemCliente);
+                        continue; // Nosso próprio pacote (mapa enviado pelo servidor)
+                    }
                 }
 
                 
@@ -144,6 +154,7 @@ int main(int argc, char *argv[])
                     free(mensagemCliente);
                     continue;
                 }
+
 
                 // Lógica de Sequencialização para mensagens de DADOS do cliente
                 if (mensagemCliente->num_sequencia == expected_seq_recv) {
@@ -171,6 +182,7 @@ int main(int argc, char *argv[])
                     case 13:
                         meu_log("movimentacao recebida");
                         movimentaPacMan(soquete, tipo, gameState->labirinto, gameState);
+                        movimentaFantasmas(soquete, gameState->labirinto, gameState);
                         enviarVisualizacao(soquete, gameState->labirinto);
                         break;
                     default:
@@ -190,7 +202,7 @@ int main(int argc, char *argv[])
     return 0;
 }
 
-void enviarVisualizacao(int soquete, int labirinto[MAP_SIZE][MAP_SIZE])
+void enviarVisualizacao(int soquete, char labirinto[MAP_SIZE][MAP_SIZE])
 {
     uint8_t total_data[MAP_SIZE * MAP_SIZE];
     for (int i = 0; i < MAP_SIZE; i++) {
@@ -209,152 +221,241 @@ void enviarVisualizacao(int soquete, int labirinto[MAP_SIZE][MAP_SIZE])
     free(msg);
 }
 
-void realizaMovimento(int labirinto[MAP_SIZE][MAP_SIZE], int novaPosX, int novaPosY, GameState *gameState)
+void enviarArquivo(int soquete, const char *caminho, uint8_t tipo)
+{
+    FILE *f = fopen(caminho, "rb");
+    if (!f) {
+        printf("Erro ao abrir arquivo: %s\n", caminho);
+        return;
+    }
+
+    fseek(f, 0, SEEK_END);
+    long tamanho = ftell(f);
+    rewind(f);
+
+    uint8_t *dados = malloc(tamanho);
+    if (!dados) {
+        fclose(f);
+        return;
+    }
+
+    fread(dados, 1, tamanho, f);
+    fclose(f);
+
+    Mensagem *msg = criaMensagem();
+    msg->tipo    = tipo;
+    msg->tamanho = (uint32_t)tamanho;
+    msg->dados   = dados;
+
+    printf("Enviando arquivo %s (%ld bytes) tipo=%d\n", caminho, tamanho, tipo);
+    enviaMensagem(msg, soquete, &seq_server);
+
+    free(dados);
+    free(msg);
+}
+
+void enviaGameOver(int soquete)
+{
+    printf("GAME OVER! Enviando tipo=14\n");
+    Mensagem *msg = criaMensagem();
+    msg->tipo    = 14;
+    msg->tamanho = 0;
+    msg->dados   = NULL;
+    enviaMensagem(msg, soquete, &seq_server);
+    free(msg);
+}
+
+char realizaMovimento(char labirinto[MAP_SIZE][MAP_SIZE], int novaPosX, int novaPosY, GameState *gameState)
 {
     int posXVerificar = novaPosX;
     int posYVerificar = novaPosY;
-    int wrapAround = 0;
-    
-    if (novaPosX < 0) {
-        posXVerificar = MAP_SIZE - 1;
-        wrapAround = 1;
-        printf("Saindo pela esquerda, aparecendo na direita em (%d, %d)\n", posXVerificar, posYVerificar);
-    } else if (novaPosX >= MAP_SIZE) {
-        posXVerificar = 0;
-        wrapAround = 1;
-        printf("Saindo pela direita, aparecendo na esquerda em (%d, %d)\n", posXVerificar, posYVerificar);
-    } else if (novaPosY < 0) {
-        posYVerificar = MAP_SIZE - 1;
-        wrapAround = 1;
-        printf("Saindo por cima, aparecendo embaixo em (%d, %d)\n", posXVerificar, posYVerificar);
-    } else if (novaPosY >= MAP_SIZE) {
-        posYVerificar = 0;
-        wrapAround = 1;
-        printf("Saindo por baixo, aparecendo em cima em (%d, %d)\n", posXVerificar, posYVerificar);
-    }
-    
+
+    if (novaPosX < 0)         posXVerificar = MAP_SIZE - 1;
+    else if (novaPosX >= MAP_SIZE) posXVerificar = 0;
+    if (novaPosY < 0)         posYVerificar = MAP_SIZE - 1;
+    else if (novaPosY >= MAP_SIZE) posYVerificar = 0;
+
     char elemento = labirinto[posXVerificar][posYVerificar];
-    
-    switch(elemento) {
-        case '0': // Espaço vazio
-            labirinto[gameState->artefatosPosX[0]][gameState->artefatosPosY[0]] = '0';
-            
-            labirinto[posXVerificar][posYVerificar] = 'P';
-            gameState->artefatosPosX[0] = posXVerificar;
-            gameState->artefatosPosY[0] = posYVerificar;
-            break;
-        case 'P': // PacMan
-            printf("Encontrou PacMan na posição (%d, %d)%s\n", posXVerificar, posYVerificar, 
-                   wrapAround ? " (wrap-around)" : "");
-            break;
-        case 'X': // Parede
-            printf("Parede bloqueando o movimento em (%d, %d)%s\n", posXVerificar, posYVerificar,
-                   wrapAround ? " (wrap-around)" : "");
-            break;
-        case 'R': // Fantasma vermelho
-            printf("Fantasma vermelho em (%d, %d)%s\n", posXVerificar, posYVerificar,
-                   wrapAround ? " (wrap-around)" : "");
-            break;
-        case 'B': // Fantasma azul
-            printf("Fantasma azul em (%d, %d)%s\n", posXVerificar, posYVerificar,
-                   wrapAround ? " (wrap-around)" : "");
-            break;
-        case 'G': // Fantasma verde
-            printf("Fantasma verde em (%d, %d)%s\n", posXVerificar, posYVerificar,
-                   wrapAround ? " (wrap-around)" : "");
-            break;
-        case 'Y': // Fantasma amarelo
-            printf("Fantasma amarelo em (%d, %d)%s\n", posXVerificar, posYVerificar,
-                   wrapAround ? " (wrap-around)" : "");
-            break;
-        case '1': // Pastilha dourada arquivo texto (1.txt)
-            printf("Pastilha dourada 1.txt em (%d, %d)%s\n", posXVerificar, posYVerificar,
-                   wrapAround ? " (wrap-around)" : "");
-            break;
-        case '2': // Pastilha dourada arquivo texto (2.txt)
-            printf("Pastilha dourada 2.txt em (%d, %d)%s\n", posXVerificar, posYVerificar,
-                   wrapAround ? " (wrap-around)" : "");
-            break;
-        case '3': // Pastilha dourada arquivo jpg (3.jpg)
-            printf("Pastilha dourada 3.jpg em (%d, %d)%s\n", posXVerificar, posYVerificar,
-                   wrapAround ? " (wrap-around)" : "");
-            break;
-        case '4': // Pastilha dourada arquivo jpg (4.jpg)
-            printf("Pastilha dourada 4.jpg em (%d, %d)%s\n", posXVerificar, posYVerificar,
-                   wrapAround ? " (wrap-around)" : "");
-            break;
-        case '5': // Pastilha dourada arquivo mp4 (5.mp4)
-            printf("Pastilha dourada 5.mp4 em (%d, %d)%s\n", posXVerificar, posYVerificar,
-                   wrapAround ? " (wrap-around)" : "");
-            break;
-        case '6': // Pastilha dourada arquivo mp4 (6.mp4)
-            printf("Pastilha dourada 6.mp4 em (%d, %d)%s\n", posXVerificar, posYVerificar,
-                   wrapAround ? " (wrap-around)" : "");
-            break;
-        default:
-            printf("Elemento desconhecido '%c' em (%d, %d)%s\n", elemento, posXVerificar, posYVerificar,
-                   wrapAround ? " (wrap-around)" : "");
+
+    if (elemento == 'X' || elemento == 'P') {
+        return elemento;
     }
+
+    int pxAtual = gameState->artefatosPosX[0];
+    int pyAtual = gameState->artefatosPosY[0];
+
+    labirinto[pxAtual][pyAtual] = '0';
+    labirinto[posXVerificar][posYVerificar] = 'P';
+    gameState->artefatosPosX[0] = posXVerificar;
+    gameState->artefatosPosY[0] = posYVerificar;
+
+    switch (elemento) {
+        case 'R': gameState->artefatosPosX[7] = -1; gameState->artefatosPosY[7] = -1; break;
+        case 'G': gameState->artefatosPosX[8] = -1; gameState->artefatosPosY[8] = -1; break;
+        case 'B': gameState->artefatosPosX[9] = -1; gameState->artefatosPosY[9] = -1; break;
+        case 'Y': gameState->artefatosPosX[10] = -1; gameState->artefatosPosY[10] = -1; break;
+        default: break;
+    }
+
+    return elemento;
 }
 
-void movimentaPacMan(int soquete, int tipo, int labirinto[MAP_SIZE][MAP_SIZE], GameState *gameState)
+void movimentaPacMan(int soquete, int tipo, char labirinto[MAP_SIZE][MAP_SIZE], GameState *gameState)
 {
     int posXAtual = gameState->artefatosPosX[0];
     int posYAtual = gameState->artefatosPosY[0];
-    int novaPosX = posXAtual;
-    int novaPosY = posYAtual;
+    int novaPosX  = posXAtual;
+    int novaPosY  = posYAtual;
 
-    switch(tipo) {
-        case 10:
-            novaPosX = posXAtual + 1;
-            printf("Tentando mover para direita: (%d, %d) -> (%d, %d)\n", posXAtual, posYAtual, novaPosX, novaPosY);
-            break;
-        case 11:
-            novaPosX = posXAtual - 1;
-            printf("Tentando mover para esquerda: (%d, %d) -> (%d, %d)\n", posXAtual, posYAtual, novaPosX, novaPosY);
-            break;
-        case 12:
-            novaPosY = posYAtual - 1;
-            printf("Tentando mover para cima: (%d, %d) -> (%d, %d)\n", posXAtual, posYAtual, novaPosX, novaPosY);
-            break;
-        case 13:
-            novaPosY = posYAtual + 1;
-            printf("Tentando mover para baixo: (%d, %d) -> (%d, %d)\n", posXAtual, posYAtual, novaPosX, novaPosY);
-            break;
+    switch (tipo) {
+        case 10: novaPosY = posYAtual + 1; printf("Movendo para DIREITA\n");   break;
+        case 11: novaPosY = posYAtual - 1; printf("Movendo para ESQUERDA\n");  break;
+        case 12: novaPosX = posXAtual - 1; printf("Movendo para CIMA\n");      break;
+        case 13: novaPosX = posXAtual + 1; printf("Movendo para BAIXO\n");     break;
     }
 
-    realizaMovimento(labirinto, novaPosX, novaPosY, gameState);
+    char elem = realizaMovimento(labirinto, novaPosX, novaPosY, gameState);
+    printf("Movimento PacMan: elem='%c'\n", elem);
 
-    printf("Movimento processado!\n");
+    if (elem == 'R' || elem == 'G' || elem == 'B' || elem == 'Y') {
+        printf("💥 PACMAN COLIDIU COM FANTASMA '%c'!\n", elem);
+        enviaGameOver(soquete);
+        usleep(100000);
+        exit(0);
+    }
 
-    Mensagem *mensagem = criaMensagem();
-    mensagem->tamanho = 1;
-    mensagem->tipo = 3;
-    uint8_t dados[1] = {1};
-    mensagem->dados = dados;
+    switch (elem) {
+        case '1': case '2': 
+            printf("✨ PACMAN PEGOU PASTILHA TXT!\n");
+            enviarArquivo(soquete, "livro.txt",          5); break;
+        case '3': case '4': 
+            printf("✨ PACMAN PEGOU PASTILHA JPG!\n");
+            enviarArquivo(soquete, "naruto.jpg",          6); break;
+        case '5': case '6': 
+            printf("✨ PACMAN PEGOU PASTILHA MP4!\n");
+            enviarArquivo(soquete, "naruto_video.mp4",    7); break;
+        default: break;
+    }
 
-    enviaMensagem(mensagem, soquete, &seq_server);
+    if (elem >= '1' && elem <= '6') {
+        int artefatosRestantes = 0;
+        for (int i = 0; i < MAP_SIZE; i++) {
+            for (int j = 0; j < MAP_SIZE; j++) {
+                if (labirinto[i][j] >= '1' && labirinto[i][j] <= '6') {
+                    artefatosRestantes++;
+                }
+            }
+        }
+        if (artefatosRestantes == 0) {
+            printf("🎉 TODOS OS ARTEFATOS COLETADOS! ENVIANDO SUCESSO (TIPO=9)...\n");
+            Mensagem *msg_vitoria = criaMensagem();
+            msg_vitoria->tipo    = 9;
+            msg_vitoria->tamanho = 0;
+            msg_vitoria->dados   = NULL;
+            enviaMensagem(msg_vitoria, soquete, &seq_server);
+            free(msg_vitoria);
+            usleep(100000);
+            exit(0);
+        }
+    }
 }
 
+static const int DDX[4] = {-1,  0,  1,  0};
+static const int DDY[4] = { 0,  1,  0, -1};
+
+static char movimentaUmFantasma(char labirinto[MAP_SIZE][MAP_SIZE],
+                                 int gsIdx, char simbolo,
+                                 int priority[4], int *currentDir,
+                                 GameState *gameState)
+{
+    if (gameState->artefatosPosX[gsIdx] < 0) return '0';
+
+    int x = gameState->artefatosPosX[gsIdx];
+    int y = gameState->artefatosPosY[gsIdx];
+
+    for (int i = 0; i < 4; i++) {
+        int dir = priority[i];
+        int nx  = x + DDX[dir];
+        int ny  = y + DDY[dir];
+
+        if (nx < 0 || nx >= MAP_SIZE || ny < 0 || ny >= MAP_SIZE) continue;
+        char dest = labirinto[nx][ny];
+        if (dest == 'X' || dest == 'R' || dest == 'G' || dest == 'B' || dest == 'Y') continue;
+
+        labirinto[x][y] = '0';
+        labirinto[nx][ny] = simbolo;
+        gameState->artefatosPosX[gsIdx] = nx;
+        gameState->artefatosPosY[gsIdx] = ny;
+        *currentDir = dir;
+        return dest;
+    }
+
+    return 'X';
+}
+
+void movimentaFantasmas(int soquete, char labirinto[MAP_SIZE][MAP_SIZE], GameState *gameState)
+{
+    static int dir_r = 1, dir_b = 3, dir_g = 0, dir_y = 0;
+    static int verde_toggle = 0;
+
+    int prio[4];
+
+    prio[0] = (dir_r + 3) % 4; prio[1] = dir_r; prio[2] = (dir_r + 1) % 4; prio[3] = (dir_r + 2) % 4;
+    if (movimentaUmFantasma(labirinto, 7, 'R', prio, &dir_r, gameState) == 'P') {
+        printf("FANTASMA 'R'\n");
+        enviaGameOver(soquete); usleep(100000); exit(0);
+    }
+
+    prio[0] = (dir_b + 1) % 4; prio[1] = dir_b; prio[2] = (dir_b + 3) % 4; prio[3] = (dir_b + 2) % 4;
+    if (movimentaUmFantasma(labirinto, 9, 'B', prio, &dir_b, gameState) == 'P') {
+        printf("FANTASMA 'B'\n");
+        enviaGameOver(soquete);
+        usleep(100000);
+        exit(0);
+    }
+
+    if (verde_toggle == 0) {
+        prio[0] = (dir_g + 1) % 4; prio[1] = dir_g; prio[2] = (dir_g + 3) % 4; prio[3] = (dir_g + 2) % 4;
+    } else {
+        prio[0] = (dir_g + 3) % 4; prio[1] = dir_g; prio[2] = (dir_g + 1) % 4; prio[3] = (dir_g + 2) % 4;
+    }
+    verde_toggle = !verde_toggle;
+    if (movimentaUmFantasma(labirinto, 8, 'G', prio, &dir_g, gameState) == 'P') {
+        printf("FANTASMA 'G'\n");
+        enviaGameOver(soquete); usleep(100000); exit(0);
+    }
+
+    int shuffle[4] = {0, 1, 2, 3};
+    for (int i = 3; i > 0; i--) {
+        int j = rand() % (i + 1);
+        int tmp = shuffle[i]; shuffle[i] = shuffle[j]; shuffle[j] = tmp;
+    }
+    if (movimentaUmFantasma(labirinto, 10, 'Y', shuffle, &dir_y, gameState) == 'P') {
+        printf("FANTASMA 'Y'\n");
+        enviaGameOver(soquete); usleep(100000); exit(0);
+    }
+}
 
 int leProtocoloMontaMensagem(Mensagem *mensagem, unsigned char buffer[2048], int *i, int soquete)
 {
+    (void)soquete;
     int offset = 1;
-    uint8_t tamanho = buffer[*i + offset] >> 3;
+    uint8_t tamanho          = buffer[*i + offset] >> 3;
     uint8_t numnum_sequencia = ((buffer[*i + offset] & 0x07) << 3) | (buffer[*i + offset + 1] >> 5);
-    uint8_t tipo = buffer[*i + offset + 1] & 0x1F;
-    mensagem->tamanho = tamanho;
-    mensagem->num_sequencia = numnum_sequencia;
-    mensagem->tipo = tipo;
+    uint8_t tipo             = buffer[*i + offset + 1] & 0x1F;
+    mensagem->tamanho        = tamanho;
+    mensagem->num_sequencia  = numnum_sequencia;
+    mensagem->tipo           = tipo;
     if (tamanho > 0)
     {
         mensagem->dados = malloc(tamanho);
         memcpy(mensagem->dados, &buffer[*i + offset + 2], tamanho);
     }
-    (*i) += tamanho + 3; // Pula: Head(2) + Dados(t) + CRC(1).
+    (*i) += tamanho + 3;
     return tipo;
 }
 
-void meu_log(char* mensagem) {
+void meu_log(char *mensagem) {
     printf("%s\n", mensagem);
 }
+
