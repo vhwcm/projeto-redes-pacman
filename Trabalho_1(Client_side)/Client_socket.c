@@ -6,15 +6,26 @@
 #include <net/ethernet.h>
 #include <linux/if_packet.h>
 #include <net/if.h>
-
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/time.h>
 
 #include "Client_socket.h"
 
 const int timeoutMillis = 200; // 300 milisegundos de timeout por exemplo
 
-struct timeval timeout = { .tv_sec = timeoutMillis / 1000, 
-                           .tv_usec = (timeoutMilis % 1000) * 1000 };
-setsockopt(soquete, SOL_SOCKET, SO_RCVTIMEO, (char*) &timeout, sizeof(timeout));
+void configurar_timeout(int soquete, int timeoutMillis)
+{
+    struct timeval timeout = {
+        .tv_sec = timeoutMillis / 1000,
+        .tv_usec = (timeoutMillis % 1000) * 1000
+    };
+
+    setsockopt(
+        soquete, SOL_SOCKET, SO_RCVTIMEO,
+        (char*) &timeout, sizeof(timeout)
+    );
+}
 
 int cria_raw_socket(const char* nome_interface_rede) {
     // Cria arquivo para o socket sem qualquer protocolo
@@ -74,7 +85,7 @@ int verifica_crc8(const uint8_t *dados, int tamanho, uint8_t crc_recebido)
 }
 
 // Montar a msg para enviar
-Mensagem* cria_msg(int tipo, uint8_t sequencia){
+Mensagem* cria_msg(uint8_t tipo, uint8_t sequencia){
     Mensagem* msg;
     if(!(msg = malloc(sizeof(Mensagem)))){
         printf("ERROR: malloc msg\n");
@@ -126,7 +137,7 @@ Mensagem* cria_msg(int tipo, uint8_t sequencia){
     dados[0] = msg->tamanho;
     dados[1] = msg->sequencia;
     dados[2] = msg->tipo;
-    dados[3] = "0000000000000000"
+    dados[3] = 0b0000000000000000;
 
     msg->CRC = calcula_crc8(dados, 3);
 
@@ -135,9 +146,9 @@ Mensagem* cria_msg(int tipo, uint8_t sequencia){
 }
 
 // Montar protocolo msg para ser enviado
-char* monta_protocolo(Mensagem* msg, uint8_t tipo){
+char* monta_protocolo(Mensagem* msg){
     char* protocolo;
-    if(!(protocolo = malloc(5))){
+    if(!(protocolo = malloc(4 + msg->tamanho + 1))){
         printf("ERROR: protocolo = malloc\n");
         return NULL;
     }
@@ -146,8 +157,8 @@ char* monta_protocolo(Mensagem* msg, uint8_t tipo){
     protocolo[1] = msg->tamanho;
     protocolo[2] = msg->sequencia;
     protocolo[3] = msg->tipo;
-    protocolo[4] = "0000000000000000"
-    protocolo[5] = msg->CRC;
+    memcpy(&protocolo[4], msg->dados, msg->tamanho);
+    protocolo[4 + msg->tamanho] = msg->CRC;
 
     return protocolo;
 }
@@ -161,7 +172,7 @@ void Enviar_p_servidor(int socket, uint8_t tipo, uint8_t sequencia){
     }
     
     char* buffer;     
-    if(!(buffer = monta_protocolo(msg, tipo))){
+    if(!(buffer = monta_protocolo(msg))){
         printf("ERROR: buffer\n");
         return;
     }
@@ -182,7 +193,10 @@ Mensagem *desmontar_msg(char* buffer){
         return NULL;
     }
 
-    if(!(verifica_crc8(buffer[4], strlen(buffer[4]), buffer[5]))){
+    uint8_t tam = buffer[1];
+    uint8_t crc_recv = buffer[4 + tam];
+
+    if(!(verifica_crc8((uint8_t*)&buffer[4], tam, crc_recv))){
         printf("ERROR: CRC8 diferente\n");
         return NULL;
     }
@@ -194,15 +208,28 @@ Mensagem *desmontar_msg(char* buffer){
         return NULL;
     }
     
+    msg->m_inicio = buffer[0];
     msg->tamanho = buffer[1];
     msg->sequencia = buffer[2];
     msg->tipo = buffer[3];
+    msg->CRC = buffer[crc_recv];
 
-    if(msg->tipo != FIM_TRANSMISSAO)
-        msg->dados = buffer[4];
+    if(msg->tipo != FIM_TRANSMISSAO){
+        if(!(msg->dados = malloc(tam))){
+            printf("ERROR: malloc dados\n");
+            free(msg);
+            return NULL;
+        }
+        memcpy(msg->dados, &buffer[4], tam);
+        msg->dados[tam] = '\0';
+    }
+    else{
+        msg->dados = NULL;
+    }
+        
 
     printf("TESTE dados:\n");
-    printf("%s\n",buffer[4]);
+    printf("%s\n",msg->dados);
 
     return msg;
 }
@@ -210,12 +237,12 @@ Mensagem *desmontar_msg(char* buffer){
 // Recebe mensagem
 int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
     Mensagem *msg;
-    char *buffer;
-    if(recv(socket, buffer, strlen(buffer),0) <= 0)
+    char *buffer = malloc(36);
+    if((recv(socket, buffer, 36,0)) <= 0)
         return -1;  // erro timeout ou recv
 
     // desmonta a msg e atribui na estrutura
-    while(msg = desmontar_msg(buffer) == NULL){
+    while((msg = desmontar_msg(buffer)) == NULL){
         // erro na desmontagem da msg
         Enviar_p_servidor(socket, NACK, 0);   
         recv(socket, buffer, strlen(buffer),0);
@@ -247,7 +274,7 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
                 
                 recv(socket, buffer, strlen(buffer),0);  // espera o próximo pacote
                 seq++;
-                while(msg = desmontar_msg(buffer) == NULL){
+                while((msg = desmontar_msg(buffer)) == NULL){
                     // erro na desmontagem da msg
                     Enviar_p_servidor(socket, NACK, msg->sequencia);   
                     recv(socket, buffer, strlen(buffer),0);
@@ -272,6 +299,8 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
         default: //outros
             printf("ERROR: tipo invalido\n");
     }
+    free(buffer);
+    free(msg->dados);
     free(msg);
     return 1;
 }

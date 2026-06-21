@@ -1,6 +1,8 @@
 #ifndef CLIENT_SOCKET
 #define CLIENT_SOCKET
 
+#include "Pacman.h"
+
 #define MARCA_INICIO 0b01111110
 
 // tipos
@@ -31,9 +33,9 @@ typedef struct
 
 int cria_raw_socket(const char* nome_interface_rede);
 
-Mensagem* cria_msg();
+Mensagem* cria_msg(uint8_t tipo, uint8_t sequencia);
 
-void Enviar_p_servidor(int socket, uint8_t tipo);
+void Enviar_p_servidor(int socket, uint8_t tipo, uint8_t sequencia);
 
 int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]);
 

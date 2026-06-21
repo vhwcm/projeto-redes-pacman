@@ -1,6 +1,6 @@
 #include <string.h>
 #include <ncurses.h>
-#include "pacman.h"
+#include "Pacman.h"
 #include "Client_socket.h"
 
 void print_title(int lines, int cols) {
@@ -88,29 +88,13 @@ void game_info(int x, int y, int t1, int t2, int t3, int life){
     attroff(COLOR_PAIR(2)|A_BOLD);
 }
 
-void pacman_game(int lines, int cols, unsigned int socket) {
+void pacman_game(int lines, int cols, int socket) {
     int t1 = 0, t2 = 0, t3 = 0, // treasures 
         life_p = LIFE_DEFAULT,
         light = 1, counter = 0;;    // luz do pacman
 
     int x = lines / 2;
     int y = cols / 2;  
-
-    for(int i = 0; i < MAP_SIZE; i++){
-        for(int j = 0; j < MAP_SIZE; j++){
-            if(LABIRINTO[i][j] != '0'){
-                game_map[i][j] = LABIRINTO[i][j];
-                // salva a posicao do pacman
-                if(game_map[i][j] == 'C'){
-                    pacman_x = i;
-                    pacman_y = j;
-                }
-            }
-            else{
-                game_map[i][j] = ' ';
-            }
-        }
-    }
 
     init_pair(1, COLOR_RED,    COLOR_BLACK);    // enemy info
     init_pair(2, 226, COLOR_BLACK);             // pacman and enemy info
@@ -132,7 +116,7 @@ void pacman_game(int lines, int cols, unsigned int socket) {
     
     // receber o mapa do servidor 
     do{
-        Enviar_p_servidor(socket, INICIALIZACAO);
+        Enviar_p_servidor(socket, INICIALIZACAO, 0);
     }while(Receber_d_servidor(socket, game_map) <= 0);
 
 
@@ -158,7 +142,7 @@ void pacman_game(int lines, int cols, unsigned int socket) {
 
         for(int i = 0; i < MAP_SIZE; i++){
             for(int j = 0; j < MAP_SIZE; j++){
-                if(game_map[i * MAP_MAP + j] == 'P'){
+                if(game_map[i * MAP_SIZE + j] == 'P'){
                     // atualiza a posição do pacman
                     pacman_x = i;
                     pacman_y = j;
@@ -173,38 +157,38 @@ void pacman_game(int lines, int cols, unsigned int socket) {
             for(int j = light * (-1); j <= light; j++){
                 if(x - 20 + pacman_x + i >= x - 20 && y + 21 + pacman_y + j >= y +21 &&
                 x - 20 + pacman_x + i < x + 20 && y + 21 + pacman_y + j < y + 61){
-                    if(game_map[pacman_x + i][pacman_y + j] == 'X'){    // desenha as paredes
+                    if(game_map[(pacman_x + i) * MAP_SIZE + pacman_y + j] == 'X'){    // desenha as paredes
                         attron(COLOR_PAIR(9));
                         mvaddch(x - 20 + pacman_x + i, y + 21 + pacman_y + j, 'A');
                         attroff(COLOR_PAIR(9));
                     }
                     // desenha outros personagens do jogo
-                    else if(game_map[pacman_x + i][pacman_y + j] == 'C'){   // desenha o pacman
+                    else if(game_map[(pacman_x + i) * MAP_SIZE + pacman_y + j] == 'C'){   // desenha o pacman
                         attron(COLOR_PAIR(5)|A_BOLD);
                         mvaddch(x - 20 + pacman_x + i, y + 21 + pacman_y + j, 'C');
                         attroff(COLOR_PAIR(5)|A_BOLD);
                     }
-                    else if(game_map[pacman_x + i][pacman_y + j] == 'G'){   // desenha os F_GREEN
+                    else if(game_map[(pacman_x + i) * MAP_SIZE +pacman_y + j] == 'G'){   // desenha os F_GREEN
                         attron(COLOR_PAIR(7)|A_BOLD);
                         mvaddch(x - 20 + pacman_x + i, y + 21 + pacman_y + j, 'A');
                         attroff(COLOR_PAIR(7)|A_BOLD);
                     }
-                    else if(game_map[pacman_x + i][pacman_y + j] == 'R'){   // desenha os F_RED
+                    else if(game_map[(pacman_x + i) * MAP_SIZE + pacman_y + j] == 'R'){   // desenha os F_RED
                         attron(COLOR_PAIR(6)|A_BOLD);
                         mvaddch(x - 20 + pacman_x + i, y + 21 + pacman_y + j, 'A');
                         attroff(COLOR_PAIR(6)|A_BOLD);
                     }
-                    else if(game_map[pacman_x + i][pacman_y + j] == 'B'){   // desenha os F_BLUE
+                    else if(game_map[(pacman_x + i) + MAP_SIZE + pacman_y + j] == 'B'){   // desenha os F_BLUE
                         attron(COLOR_PAIR(8)|A_BOLD);
                         mvaddch(x - 20 + pacman_x + i, y + 21 + pacman_y + j, 'A');
                         attroff(COLOR_PAIR(8)|A_BOLD);
                     }
-                    else if(game_map[pacman_x + i][pacman_y + j] == 'Y'){   // desenha os F_YELLOW
+                    else if(game_map[(pacman_x + i) * MAP_SIZE + pacman_y + j] == 'Y'){   // desenha os F_YELLOW
                         attron(COLOR_PAIR(5)|A_BOLD);
                         mvaddch(x - 20 + pacman_x + i, y + 21 + pacman_y + j, 'A');
                         attroff(COLOR_PAIR(5)|A_BOLD);
                     }
-                    else if(game_map[pacman_x + i][pacman_y + j] == 'T'){   // desenha os tesouros
+                    else if(game_map[(pacman_x + i) * MAP_SIZE + pacman_y + j] == 'T'){   // desenha os tesouros
                         attron(COLOR_PAIR(5)|A_BOLD);
                         mvaddch(x - 20 + pacman_x + i, y + 21 + pacman_y + j, '#');
                         attroff(COLOR_PAIR(5)|A_BOLD);

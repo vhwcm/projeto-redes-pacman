@@ -1,9 +1,19 @@
-CFLAGS = -Wall 
-LDFLAGS = 
-BIN = Client
-SOURCE = Client_main.c Client_socket.c Pacman.c  
-
 CC = gcc
+CFLAGS = -Wall -Wextra
 
-AS: 
-	$(CC) $(SOURCE) $(CFLAGS) -o $(BIN) $$(pkg-config allegro_ttf-5 allegro-5 allegro_main-5 allegro_font-5 allegro_primitives-5 allegro_image-5 --libs)
+PROG = Pacman_game
+
+$(PROG): Client_main.o Client_socket.o Pacman.o
+	$(CC) $(CFLAGS) -o $(PROG) Client_main.o Client_socket.o Pacman.o	-lncurses -ltinfo
+
+Client_main.o: Client_main.c Client_socket.h Pacman.h 
+	$(CC) $(CFLAGS) -c Client_main.c
+
+Client_socket.o: Client_socket.c Client_socket.h
+	$(CC) $(CFLAGS) -c Client_socket.c
+
+Pacman.o: Pacman.c Pacman.h
+	$(CC) $(CFLAGS) -c Pacman.c
+
+clean:
+	rm -f *.o $(PROG)
