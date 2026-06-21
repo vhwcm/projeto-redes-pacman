@@ -9,7 +9,13 @@
 
 
 #include "Client_socket.h"
- 
+
+const int timeoutMillis = 200; // 300 milisegundos de timeout por exemplo
+
+struct timeval timeout = { .tv_sec = timeoutMillis / 1000, 
+                           .tv_usec = (timeoutMilis % 1000) * 1000 };
+setsockopt(soquete, SOL_SOCKET, SO_RCVTIMEO, (char*) &timeout, sizeof(timeout));
+
 int cria_raw_socket(const char* nome_interface_rede) {
     // Cria arquivo para o socket sem qualquer protocolo
     int soquete = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
@@ -68,7 +74,7 @@ int verifica_crc8(const uint8_t *dados, int tamanho, uint8_t crc_recebido)
 }
 
 // Montar a msg para enviar
-Mensagem* cria_msg(int tipo){
+Mensagem* cria_msg(int tipo, uint8_t sequencia){
     Mensagem* msg;
     if(!(msg = malloc(sizeof(Mensagem)))){
         printf("ERROR: malloc msg\n");
@@ -76,8 +82,8 @@ Mensagem* cria_msg(int tipo){
     }
 
     msg->m_inicio = MARCA_INICIO;
-    msg->tamanho = 0b00000;
-    msg->sequencia = 0b000000;  // = 0
+    msg->tamanho = 0b10000;
+    msg->sequencia = sequencia;
 
     switch (tipo){
         case 0:
@@ -120,6 +126,7 @@ Mensagem* cria_msg(int tipo){
     dados[0] = msg->tamanho;
     dados[1] = msg->sequencia;
     dados[2] = msg->tipo;
+    dados[3] = "0000000000000000"
 
     msg->CRC = calcula_crc8(dados, 3);
 
@@ -128,7 +135,7 @@ Mensagem* cria_msg(int tipo){
 }
 
 // Montar protocolo msg para ser enviado
-char* monta_protocolo(Mensagem* msg, int tipo){
+char* monta_protocolo(Mensagem* msg, uint8_t tipo){
     char* protocolo;
     if(!(protocolo = malloc(5))){
         printf("ERROR: protocolo = malloc\n");
@@ -139,15 +146,16 @@ char* monta_protocolo(Mensagem* msg, int tipo){
     protocolo[1] = msg->tamanho;
     protocolo[2] = msg->sequencia;
     protocolo[3] = msg->tipo;
-    protocolo[4] = msg->CRC;
+    protocolo[4] = "0000000000000000"
+    protocolo[5] = msg->CRC;
 
     return protocolo;
 }
 
 // Envia mensagem
-void Enviar_p_servidor(int socket, int tipo){
+void Enviar_p_servidor(int socket, uint8_t tipo, uint8_t sequencia){
     Mensagem* msg;
-    if(!(msg = cria_msg(tipo))){
+    if(!(msg = cria_msg(tipo, sequencia))){
         printf("ERRO: cria_msg\n");
         return;
     }
@@ -200,40 +208,72 @@ Mensagem *desmontar_msg(char* buffer){
 }
 
 // Recebe mensagem
-void Receber_d_servidor(int socket){
+int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
     Mensagem *msg;
     char *buffer;
-    recv(socket, buffer, strlen(buffer),0);
+    if(recv(socket, buffer, strlen(buffer),0) <= 0)
+        return -1;  // erro timeout ou recv
 
     // desmonta a msg e atribui na estrutura
-    msg = desmontar_msg(buffer);
+    while(msg = desmontar_msg(buffer) == NULL){
+        // erro na desmontagem da msg
+        Enviar_p_servidor(socket, NACK, 0);   
+        recv(socket, buffer, strlen(buffer),0);
+    }
 
     // caso receber exceto ack e nack
     switch (msg->tipo){
-        case 2: //visualização;
-
+        case ACK:
             break;
-        case 4: //dados
+        case NACK:
+            return 0;
+            break;
+        case VISUALIZACAO: //visualização;
+            break;
+        case DADOS: // atualização do mapa
+            uint8_t seq = 0;
+        
+            do{
+                if(msg->sequencia == seq){
+                    for(int i = 0; i < msg->tamanho; i++){
+                        game_map[i + seq * 32] = msg->dados[i];
+                    }
+                    if(seq == 63) seq = 0;   // reinicia a sequência
+                }
+                else{
+                    // recebeu seq errada
+                    Enviar_p_servidor(socket, NACK, seq);   
+                }
+                
+                recv(socket, buffer, strlen(buffer),0);  // espera o próximo pacote
+                seq++;
+                while(msg = desmontar_msg(buffer) == NULL){
+                    // erro na desmontagem da msg
+                    Enviar_p_servidor(socket, NACK, msg->sequencia);   
+                    recv(socket, buffer, strlen(buffer),0);
+                }
+            }while(msg->tipo != FIM_TRANSMISSAO);
+            break;
+        case TXT: //txt
             
             break;
-        case 5: //txt
+        case JPG: //jpg
             
             break;
-        case 6: //jpg
+        case MP4: //mp4
             
             break;
-        case 7: //mp4
+        case ERROS: //erros
             
             break;
-        case 15: //erros
-            
-            break;
-        case 16: //fim_transmissao
+        case FIM_TRANSMISSAO: //fim_transmissao
             
             break;
         default: //outros
             printf("ERROR: tipo invalido\n");
     }
+    free(msg);
+    return 1;
 }
 
 // Timestamp
