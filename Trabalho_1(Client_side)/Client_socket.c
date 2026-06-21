@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include <arpa/inet.h>
 #include <net/ethernet.h>
@@ -14,6 +15,11 @@
 
 const int timeoutMillis = 200; // 300 milisegundos de timeout por exemplo
 
+int txt = 0;
+int jpg = 0;
+int mp4 = 0;
+
+// timeout
 void configurar_timeout(int soquete, int timeoutMillis)
 {
     struct timeval timeout = {
@@ -237,65 +243,203 @@ Mensagem *desmontar_msg(char* buffer){
 // Recebe mensagem
 int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
     Mensagem *msg;
+    int n;
     char *buffer = malloc(36);
-    if((recv(socket, buffer, 36,0)) <= 0)
+    if((n = recv(socket, buffer, 36,0)) <= 0)
         return -1;  // erro timeout ou recv
 
     // desmonta a msg e atribui na estrutura
-    while((msg = desmontar_msg(buffer)) == NULL){
+    while((msg = desmontar_msg(buffer)) == NULL || n <= 0){
         // erro na desmontagem da msg
         Enviar_p_servidor(socket, NACK, 0);   
-        recv(socket, buffer, strlen(buffer),0);
+        n = recv(socket, buffer, strlen(buffer),0);
     }
+
+    int seq;
 
     // caso receber exceto ack e nack
     switch (msg->tipo){
         case ACK:
             break;
+//-------------------------------------------------------------------------------------
         case NACK:
             return 0;
-            break;
+//-------------------------------------------------------------------------------------
         case VISUALIZACAO: //visualização;
             break;
+//-------------------------------------------------------------------------------------
         case DADOS: // atualização do mapa
-            uint8_t seq = 0;
+            seq = 0;
         
             do{
-                if(msg->sequencia == seq){
+                if(msg->sequencia == seq && msg->tipo == DADOS){
                     for(int i = 0; i < msg->tamanho; i++){
                         game_map[i + seq * 32] = msg->dados[i];
                     }
-                    if(seq == 63) seq = 0;   // reinicia a sequência
+                    if(seq == 63){  seq = 0;}   // reinicia a sequência
+                    else{   seq++;}
                 }
                 else{
                     // recebeu seq errada
                     Enviar_p_servidor(socket, NACK, seq);   
                 }
                 
-                recv(socket, buffer, strlen(buffer),0);  // espera o próximo pacote
-                seq++;
-                while((msg = desmontar_msg(buffer)) == NULL){
+                DATA:
+                n = recv(socket, buffer, strlen(buffer),0);  // espera o próximo pacote
+
+                while((msg = desmontar_msg(buffer)) == NULL || n <= 0){
                     // erro na desmontagem da msg
-                    Enviar_p_servidor(socket, NACK, msg->sequencia);   
-                    recv(socket, buffer, strlen(buffer),0);
+                    Enviar_p_servidor(socket, NACK, seq);   
+                    n = recv(socket, buffer, sizeof(buffer),0);
                 }
             }while(msg->tipo != FIM_TRANSMISSAO);
             break;
+//-------------------------------------------------------------------------------------
         case TXT: //txt
-            
-            break;
+            FILE *arquivo;
+
+            if(txt == 0){   arquivo = fopen("TEXTO_1.txt", "wb");}
+            else{   arquivo = fopen("TEXTO_2.txt", "wb");}
+
+            txt++;
+
+            if(!arquivo){
+                printf("ERROR: erro ao abrir o arquivo txt\n");
+                return 0;
+            }
+
+            seq = 0;
+            while(1){
+                if(msg->tipo == FIM_TRANSMISSAO){
+                    // muda para receber dados
+                    seq = 0;
+                    fclose(arquivo);
+                    if(txt == 0){   system("less TEXTO_2.jpg &");}
+                    else{   system("less TEXTO_1.jpg &");}
+                    goto DATA;
+                }
+
+                if(msg->sequencia == seq){
+                    fwrite(msg->dados, 1, msg->tamanho, arquivo);
+
+                    Enviar_p_servidor(socket, ACK, seq);
+
+                    if(seq == 63){  seq = 0;}   // reinicia a sequência
+                    else{   seq++;}
+                }
+                else{
+                    // recebeu seq errada
+                    Enviar_p_servidor(socket, NACK, seq);   
+                }
+
+                n = recv(socket, buffer, sizeof(buffer),0);  // espera o próximo pacote
+             
+                while((msg = desmontar_msg(buffer)) == NULL || n <= 0){
+                    // erro na desmontagem da msg
+                    Enviar_p_servidor(socket, NACK, seq);   
+                    n = recv(socket, buffer, sizeof(buffer),0);
+                }
+            }
+//-------------------------------------------------------------------------------------
         case JPG: //jpg
-            
-            break;
+            FILE *imagem;
+
+            if(jpg == 0){   imagem = fopen("IMAGEM_1.jpg", "wb");}
+            else{   imagem = fopen("IMAGEM_2.jpg", "wb");}
+
+            jpg++;
+
+            if(!imagem){
+                printf("ERROR: erro ao abrir o imagem jpg\n");
+                return 0;
+            }
+
+            seq = 0;
+            while(1){
+                if(msg->tipo == FIM_TRANSMISSAO){
+                    // muda para receber dados
+                    seq = 0;
+                    fclose(imagem);
+                    if(jpg == 0){   system("feh IMAGEM_2.jpg &");}
+                    else{   system("feh IMAGEM_1.jpg &");}
+                    goto DATA;
+                }
+
+                if(msg->sequencia == seq){
+                    fwrite(msg->dados, 1, msg->tamanho, imagem);
+
+                    Enviar_p_servidor(socket, ACK, seq);
+
+                    if(seq == 63){  seq = 0;}   // reinicia a sequência
+                    else{   seq++;}
+                }
+                else{
+                    // recebeu seq errada
+                    Enviar_p_servidor(socket, NACK, seq);   
+                }
+
+                n = recv(socket, buffer, sizeof(buffer),0);  // espera o próximo pacote
+             
+                while((msg = desmontar_msg(buffer)) == NULL || n <= 0){
+                    // erro na desmontagem da msg
+                    Enviar_p_servidor(socket, NACK, seq);   
+                    n = recv(socket, buffer, sizeof(buffer),0);
+                }
+            }
+//-------------------------------------------------------------------------------------
         case MP4: //mp4
-            
+            FILE *video;
+
+            if(mp4 == 0){   video = fopen("VIDEO_1.jpg", "wb");}
+            else{   video = fopen("VIDEO_2.jpg", "wb");}
+
+            mp4++;
+
+            if(!video){
+                printf("ERROR: erro ao abrir o video mp4\n");
+                return 0;
+            }
+
+            seq = 0;
+            while(1){
+                if(msg->tipo == FIM_TRANSMISSAO){
+                    // muda para receber dados
+                    seq = 0;
+                    fclose(video);
+                    if(mp4 == 0){   system("mpv VIDEO_2.jpg &");}
+                    else{   system("mpv VIDEO_1.jpg &");}
+                    goto DATA;
+                }
+
+                if(msg->sequencia == seq){
+                    fwrite(msg->dados, 1, msg->tamanho, video);
+
+                    Enviar_p_servidor(socket, ACK, seq);
+
+                    if(seq == 63){  seq = 0;}   // reinicia a sequência
+                    else{   seq++;}
+                }
+                else{
+                    // recebeu seq errada
+                    Enviar_p_servidor(socket, NACK, seq);   
+                }
+
+                n = recv(socket, buffer, sizeof(buffer),0);  // espera o próximo pacote
+             
+                while((msg = desmontar_msg(buffer)) == NULL || n <= 0){
+                    // erro na desmontagem da msg
+                    Enviar_p_servidor(socket, NACK, seq);   
+                    n = recv(socket, buffer, sizeof(buffer),0);
+                }
+            }            
             break;
+//-------------------------------------------------------------------------------------
         case ERROS: //erros
-            
-            break;
+            return 0;
+//-------------------------------------------------------------------------------------
         case FIM_TRANSMISSAO: //fim_transmissao
-            
             break;
+//-------------------------------------------------------------------------------------
         default: //outros
             printf("ERROR: tipo invalido\n");
     }
@@ -304,5 +448,3 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
     free(msg);
     return 1;
 }
-
-// Timestamp

@@ -4,7 +4,6 @@
 #define MAP_SIZE 40
 
 #define TREASURE_MAX 2
-#define LIFE_DEFAULT 3
 
 // mostra a tela inicial do jogo
 void print_title(int lines, int cols);

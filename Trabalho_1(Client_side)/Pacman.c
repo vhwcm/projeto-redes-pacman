@@ -90,7 +90,6 @@ void game_info(int x, int y, int t1, int t2, int t3, int life){
 
 void pacman_game(int lines, int cols, int socket) {
     int t1 = 0, t2 = 0, t3 = 0, // treasures 
-        life_p = LIFE_DEFAULT,
         light = 1, counter = 0;;    // luz do pacman
 
     int x = lines / 2;
@@ -120,12 +119,14 @@ void pacman_game(int lines, int cols, int socket) {
     }while(Receber_d_servidor(socket, game_map) <= 0);
 
 
-    int pacman_x, pacman_y;
+    int pacman_x, pacman_y, pacman_life;
+    // receber o dado necessario para o jogo (life do pacman)
+
     int ch;
 
     while(1){
         // quadro de info
-        game_info(x, y, t1, t2, t3, life_p);
+        game_info(x, y, t1, t2, t3, pacman_life);
 
         // desenha o quadro do jogo
         attron(COLOR_PAIR(9));
