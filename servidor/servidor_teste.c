@@ -4,10 +4,10 @@
 #include <stdint.h>
 #include <stdarg.h>
 #include <ctype.h>
+#include <errno.h>
 #include <unistd.h>
 #include <sys/socket.h>
 #include <sys/time.h>
-#include <ncurses.h>
 #include <pthread.h>
 #include <linux/if_packet.h>
 #include <net/ethernet.h>
@@ -15,8 +15,6 @@
 
 #include "../rede.h"
 
-#define LOG_MAX   500
-#define INPUT_MAX 256
 #define ACK_TIMEOUT_MS 200
 
 static long long timestamp_ms(void)
@@ -26,93 +24,37 @@ static long long timestamp_ms(void)
     return (long long)tp.tv_sec * 1000 + tp.tv_usec / 1000;
 }
 
-static char   log_buf[LOG_MAX][256];
-static int    log_count = 0;
-static pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
-static volatile int precisa_redesenhar = 0;
-
 static int     soquete_global;
 static uint8_t num_seq_send = 0;
 static uint8_t expected_seq_recv = 0;
-static int     ack_counter = 0;
-static long long ultimo_ack_ts = 0;
-
-static WINDOW *win_log;
-static WINDOW *win_status;
-static WINDOW *win_input;
 
 static void log_add(const char *fmt, ...)
 {
-    char buf[256];
     va_list ap;
     va_start(ap, fmt);
-    vsnprintf(buf, sizeof(buf), fmt, ap);
+    vprintf(fmt, ap);
     va_end(ap);
-
-    pthread_mutex_lock(&log_lock);
-    if (log_count < LOG_MAX) {
-        strncpy(log_buf[log_count++], buf, 255);
-    } else {
-        memmove(log_buf[0], log_buf[1], 255 * (LOG_MAX - 1));
-        strncpy(log_buf[LOG_MAX - 1], buf, 255);
-    }
-    precisa_redesenhar = 1;
-    pthread_mutex_unlock(&log_lock);
+    printf("\n");
+    fflush(stdout);
 }
 
-static void redesenha_log(void)
-{
-    int h, w;
-    getmaxyx(win_log, h, w);
-    werase(win_log);
-    box(win_log, 0, 0);
-    wattron(win_log, A_BOLD);
-    mvwprintw(win_log, 0, 2, " Log de Mensagens ");
-    wattroff(win_log, A_BOLD);
-
-    pthread_mutex_lock(&log_lock);
-    int start = log_count > (h - 2) ? log_count - (h - 2) : 0;
-    for (int i = start; i < log_count; i++) {
-        const char *line = log_buf[i];
-        int attr = COLOR_PAIR(3);
-        if      (strncmp(line, "[SENT]", 6) == 0) attr = COLOR_PAIR(1);
-        else if (strncmp(line, "[RECV]", 6) == 0) attr = COLOR_PAIR(2);
-        else if (strncmp(line, "[ERR]",  5) == 0) attr = COLOR_PAIR(4);
-        wattron(win_log, attr);
-        mvwprintw(win_log, i - start + 1, 1, "%.*s", w - 2, line);
-        wattroff(win_log, attr);
-    }
-    pthread_mutex_unlock(&log_lock);
-    wrefresh(win_log);
-}
-
-static void *thread_receber(void *arg)
+static void monitorar(int ms)
 {
     unsigned char buffer[2048];
-    (void)arg;
 
     struct timeval tv;
     tv.tv_sec  = 0;
-    tv.tv_usec = ACK_TIMEOUT_MS * 1000;
+    tv.tv_usec = 100 * 1000;
     setsockopt(soquete_global, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
-    while (1) {
+    long long inicio = timestamp_ms();
+    while (timestamp_ms() - inicio < ms) {
         struct sockaddr_ll from;
         socklen_t fromlen = sizeof(from);
         ssize_t bytes = recvfrom(soquete_global, buffer, sizeof(buffer), 0, (struct sockaddr *)&from, &fromlen);
 
-        long long agora = timestamp_ms();
-        if (agora - ultimo_ack_ts >= ACK_TIMEOUT_MS && ack_counter > 0) {
-            uint8_t ack_seq = (expected_seq_recv + 63) % 64;
-            enviarAK(ack_seq, soquete_global);
-            log_add("[SENT] AK timeout 200ms seq=%d", ack_seq);
-            ack_counter = 0;
-            ultimo_ack_ts = agora;
-        }
-
         if (bytes <= 0) continue;
 
-        // Ignora ecos de transmissão no loopback
         if (modo_loopback && from.sll_pkttype == PACKET_OUTGOING)
             continue;
 
@@ -134,48 +76,41 @@ static void *thread_receber(void *arg)
 
             if (!encontrado) continue;
 
+            if (modo_loopback && pacotes_para_ignorar > 0) {
+                pacotes_para_ignorar--;
+                i += (buffer[i + 1] >> 3) + 3;
+                continue;
+            }
+
             int offset = 1;
             uint8_t tamanho = buffer[i + offset] >> 3;
             uint8_t seq     = ((buffer[i + offset] & 0x07) << 3) | (buffer[i + offset + 1] >> 5);
             uint8_t tipo    = buffer[i + offset + 1] & 0x1F;
+            uint8_t crc     = buffer[i + offset + 2 + tamanho];
 
-            // ACKs e NAKs são mensagens de controle, não incrementam sequência
-            if (tipo == 1 || tipo == 15) {
-                log_add("[RECV] %s seq=%d", tipo == 1 ? "AK" : "NAK", seq);
-                i += tamanho + 3;
-                continue;
+            char dados_hex[128] = "";
+            for (int d = 0; d < tamanho && d < 16; d++) {
+                char hex[5];
+                snprintf(hex, sizeof(hex), "%02X ", buffer[i + offset + 2 + d]);
+                strncat(dados_hex, hex, sizeof(dados_hex) - strlen(dados_hex) - 1);
             }
 
-            if (seq == expected_seq_recv) {
-                char dados_hex[128] = "";
-                for (int d = 0; d < tamanho && d < 16; d++) {
-                    char hex[5];
-                    snprintf(hex, sizeof(hex), "%02X ", buffer[i + offset + 2 + d]);
-                    strncat(dados_hex, hex, sizeof(dados_hex) - strlen(dados_hex) - 1);
-                }
+            log_add("[MONITOR] CRC=0x%02X | Tipo=%2d | Dados=[%s]", crc, tipo, dados_hex);
 
-                log_add("[RECV] tipo=%2d seq=%2d tam=%d  dados=[%s]", tipo, seq, tamanho, dados_hex);
-                
-                expected_seq_recv = (expected_seq_recv + 1) % 64;
-                ack_counter++;
-                ultimo_ack_ts = timestamp_ms();
-
-                if (ack_counter >= 4) {
-                    uint8_t ack_seq = (expected_seq_recv + 63) % 64;
-                    enviarAK(ack_seq, soquete_global);
-                    log_add("[SENT] AK cumulativo seq=%d", ack_seq);
-                    ack_counter = 0;
-                    ultimo_ack_ts = timestamp_ms();
-                }
+            if (tipo == 1 || tipo == 15) {
+                log_add("[RECV] %s seq=%d", tipo == 1 ? "AK" : "NAK", seq);
             } else {
-                log_add("[ERR] Sequencia incorreta! Esperado=%d Recebido=%d. Enviando NAK.", expected_seq_recv, seq);
-                enviarNAK(expected_seq_recv, soquete_global);
+                if (seq == expected_seq_recv) {
+                    log_add("[RECV] tipo=%2d seq=%2d tam=%d  dados=[%s]", tipo, seq, tamanho, dados_hex);
+                    expected_seq_recv = (expected_seq_recv + 1) % 64;
+                } else {
+                    log_add("[ERR] Sequencia incorreta! Esperado=%d Recebido=%d", expected_seq_recv, seq);
+                }
             }
 
             i += tamanho + 3;
         }
     }
-    return NULL;
 }
 
 static void envia_msg(int tipo, const char *dados_str)
@@ -195,12 +130,16 @@ static void envia_msg(int tipo, const char *dados_str)
     }
 
     char *raw = montaMensagem(&msg);
-    int frameTam = msg.tamanho + MIN_MENSAGE_SIZE;
-    ssize_t sent = send(soquete_global, raw, frameTam, 0);
+
+    log_add("[DBG]  send: fd=%d tipo=%d seq=%d tam=%d",
+            soquete_global, tipo, (num_seq_send + 63) % 64, msg.tamanho);
+    ssize_t sent = send(soquete_global, raw, TAM_MAXIMO_MENSAGEM + MIN_MENSAGE_SIZE, 0);
+    if (modo_loopback) pacotes_para_ignorar++;
     free(raw);
 
     if (sent < 0) {
-        log_add("[ERR] Falha no send: tipo=%d seq=%d", tipo, (num_seq_send + 63) % 64);
+        log_add("[ERR] Falha no send: tipo=%d seq=%d errno=%d (%s)",
+                tipo, (num_seq_send + 63) % 64, errno, strerror(errno));
     } else {
         log_add("[SENT] tipo=%2d seq=%2d tam=%d  dados=\"%s\"",
                 tipo, (num_seq_send + 63) % 64, msg.tamanho,
@@ -208,18 +147,6 @@ static void envia_msg(int tipo, const char *dados_str)
     }
 }
 
-
-static void desenha_status(const char *nome_rede)
-{
-    werase(win_status);
-    wbkgd(win_status, COLOR_PAIR(5));
-    mvwprintw(win_status, 0, 1,
-        "Interface: %-8s  modo: %-9s  | tipos: 2=viz  10=dir 11=esq 12=cima 13=baixo",
-        nome_rede, modo_loopback ? "loopback" : "ethernet");
-    mvwprintw(win_status, 1, 1,
-        "Formato de entrada: <tipo> [dados]   Exemplos: '2'  '10'  '3 hello'   | q=sair");
-    wrefresh(win_status);
-}
 
 int main(int argc, char *argv[])
 {
@@ -231,92 +158,20 @@ int main(int argc, char *argv[])
     char *nome_rede = argv[1];
     modo_loopback   = (strcmp(nome_rede, "lo") == 0);
     soquete_global  = cria_raw_socket(nome_rede);
-    ultimo_ack_ts   = timestamp_ms();
 
-    initscr();
-    cbreak();
-    noecho();
-    keypad(stdscr, TRUE);
-    curs_set(1);
-
-    if (has_colors()) {
-        start_color();
-        use_default_colors();
-        init_pair(1, COLOR_GREEN,  -1);
-        init_pair(2, COLOR_CYAN,   -1);
-        init_pair(3, COLOR_WHITE,  -1);
-        init_pair(4, COLOR_RED,    -1);
-        init_pair(5, COLOR_BLACK, COLOR_CYAN);
-        init_pair(6, COLOR_YELLOW, -1);
+    int repeticoes = 1;
+    printf("Quantas vezes repetir o processo? ");
+    fflush(stdout);
+    if (scanf("%d", &repeticoes) != 1) {
+        repeticoes = 1;
     }
 
-    int rows, cols;
-    getmaxyx(stdscr, rows, cols);
-
-    int log_h = rows - 4;
-    win_log    = newwin(log_h, cols, 0,        0);
-    win_status = newwin(2,     cols, log_h,     0);
-    win_input  = newwin(2,     cols, log_h + 2, 0);
-
-    wtimeout(win_input, 100);
-
-    desenha_status(nome_rede);
-
-    pthread_t tid;
-    pthread_create(&tid, NULL, thread_receber, NULL);
-    pthread_detach(tid);
-
-    log_add("Pronto! Conectado em '%s'. Digite mensagens abaixo.", nome_rede);
-    redesenha_log();
-
-    char input[INPUT_MAX] = {0};
-    int  input_len = 0;
-
-    while (1) {
-        if (precisa_redesenhar) {
-            precisa_redesenhar = 0;
-            redesenha_log();
-        }
-
-        werase(win_input);
-        box(win_input, 0, 0);
-        wattron(win_input, A_BOLD);
-        mvwprintw(win_input, 0, 2, " Entrada ");
-        wattroff(win_input, A_BOLD);
-        wattron(win_input, COLOR_PAIR(6));
-        mvwprintw(win_input, 1, 1, "> %s", input);
-        wattroff(win_input, COLOR_PAIR(6));
-        wmove(win_input, 1, 3 + input_len);
-        wrefresh(win_input);
-
-        int ch = wgetch(win_input);
-        if (ch == ERR) continue;
-
-        if (ch == 'q' && input_len == 0) break;
-
-        if (ch == '\n' || ch == KEY_ENTER) {
-            if (input_len > 0) {
-                int  tipo = 0;
-                char dados[INPUT_MAX] = {0};
-                int  n = sscanf(input, "%d %[^\n]", &tipo, dados);
-                if (n >= 1) {
-                    envia_msg(tipo, n >= 2 ? dados : NULL);
-                } else {
-                    log_add("[ERR] Formato invalido. Use: <tipo> [dados]");
-                }
-                memset(input, 0, sizeof(input));
-                input_len = 0;
-                redesenha_log();
-            }
-        } else if (ch == KEY_BACKSPACE || ch == 127 || ch == '\b') {
-            if (input_len > 0) input[--input_len] = '\0';
-        } else if (isprint(ch) && input_len < INPUT_MAX - 1) {
-            input[input_len++] = (char)ch;
-            input[input_len]   = '\0';
-        }
+    for (int r = 0; r < repeticoes; r++) {
+        log_add("--- Ciclo %d/%d ---", r + 1, repeticoes);
+        envia_msg(2, NULL);
+        monitorar(10000);
     }
 
-    endwin();
     close(soquete_global);
     return 0;
 }

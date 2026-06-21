@@ -1,5 +1,5 @@
 CC ?= gcc
-CFLAGS ?= -Wall -Wextra -O2 -g
+CFLAGS ?= -Wall -Wextra  -g
 
 BIN ?= server
 TEST_BIN = servidor_teste

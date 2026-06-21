@@ -29,6 +29,7 @@ void meu_log(char* mensagem);
 
 static uint8_t expected_seq_recv = 0;
 static int ack_counter = 0;
+static uint8_t seq_server = 0;
 
 int main(int argc, char *argv[])
 {
@@ -40,7 +41,6 @@ int main(int argc, char *argv[])
 
     char *nome_rede = argv[1];
 
-    int modo_loopback = 0;
     if (strcmp(nome_rede, "lo") == 0) {
         modo_loopback = 1;
     }
@@ -129,6 +129,14 @@ int main(int argc, char *argv[])
                 Mensagem *mensagemCliente = criaMensagem();
                 unsigned int tipo = leProtocoloMontaMensagem(mensagemCliente, buffer, &i, soquete);
                 
+                if (modo_loopback && pacotes_para_ignorar > 0) {
+                    free(mensagemCliente->dados);
+                    free(mensagemCliente);
+                    pacotes_para_ignorar--;
+                    continue;
+                }
+
+                
                 // ACKs e NAKs (mensagens de controle)
                 if (tipo == 1 || tipo == 15) {
                     printf("Recebido %s para sequencia %d\n", tipo == 1 ? "AK" : "NAK", mensagemCliente->num_sequencia);
@@ -196,7 +204,7 @@ void enviarVisualizacao(int soquete, int labirinto[MAP_SIZE][MAP_SIZE])
     msg->tamanho = MAP_SIZE * MAP_SIZE;
     msg->dados   = total_data;
 
-    enviaMensagem(msg, soquete);
+    enviaMensagem(msg, soquete, &seq_server);
 
     free(msg);
 }
@@ -320,13 +328,12 @@ void movimentaPacMan(int soquete, int tipo, int labirinto[MAP_SIZE][MAP_SIZE], G
     printf("Movimento processado!\n");
 
     Mensagem *mensagem = criaMensagem();
-    mensagem->num_sequencia = 1;
     mensagem->tamanho = 1;
     mensagem->tipo = 3;
     uint8_t dados[1] = {1};
     mensagem->dados = dados;
 
-    enviaMensagem(mensagem, soquete);
+    enviaMensagem(mensagem, soquete, &seq_server);
 }
 
 

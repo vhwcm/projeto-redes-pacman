@@ -19,7 +19,7 @@ typedef struct
 
 char *montaMensagem(Mensagem *mensagem);
 int desmontaMensagem(const char *mensagem, Mensagem *protocolo);
-void enviaMensagem(Mensagem *mensagem, int soquete);
+void enviaMensagem(Mensagem *mensagem, int soquete, uint8_t *seq);
 void enviarAK(uint8_t seq, int soquete);
 void enviarNAK(uint8_t seq, int soquete);
 Mensagem *criaMensagem();
@@ -29,5 +29,6 @@ int verifica_crc8(const uint8_t *dados, int tamanho, uint8_t crc_recebido);
 void printaMensagem(Mensagem *mensagem);
 
 extern int modo_loopback;
+extern int pacotes_para_ignorar;
 
 #endif
