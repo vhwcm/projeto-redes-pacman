@@ -8,7 +8,7 @@
 
 typedef struct
 {
-    int labirinto[MAP_SIZE][MAP_SIZE];
+    char labirinto[MAP_SIZE][MAP_SIZE];
     int artefatosPosX[12]; // '/0' representa que já foi coletado
     int artefatosPosY[12]; // '/0' representa que já foi coletado
 } GameState;

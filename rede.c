@@ -45,6 +45,7 @@ int verifica_crc8(const uint8_t *dados, int tamanho, uint8_t crc_recebido)
 }
 
 char *montaMensagem(Mensagem *mensagem)
+char *montaMensagem(Mensagem *mensagem)
 {
     int tamanhoDados      = mensagem->tamanho;
     int tamanho_envio     = TAM_MAXIMO_MENSAGEM + MIN_MENSAGE_SIZE;
@@ -66,7 +67,7 @@ char *montaMensagem(Mensagem *mensagem)
 int desmontaMensagem(const char *mensagem, Mensagem *protocolo)
 {
     if (mensagem[0] != MARCA_INICIO) {
-        return 0;
+        return 0 0;
     }
 
     protocolo->tamanho = (mensagem[1] >> 3) & 0x1F;
