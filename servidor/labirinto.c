@@ -1,6 +1,7 @@
 #include "labirinto.h"
 
 #include <stdlib.h>
+#include <time.h>
 
 static const char LABIRINTO[MAP_SIZE][MAP_SIZE] = {
     "0000000000000000000000000000000000000000",
@@ -63,7 +64,7 @@ GameState* criaGameState()
     return gameState;
 }
 
-void iniciaLabirinto(int labirinto[MAP_SIZE][MAP_SIZE])
+void iniciaLabirinto(char labirinto[MAP_SIZE][MAP_SIZE])
 {
     for (int i = 0; i < MAP_SIZE; i++)
     {
@@ -74,7 +75,7 @@ void iniciaLabirinto(int labirinto[MAP_SIZE][MAP_SIZE])
     }
 }
 
-void carregaLabirinto(FILE *arquivo, int labirinto[MAP_SIZE][MAP_SIZE], GameState *gameState)
+void carregaLabirinto(FILE *arquivo, char labirinto[MAP_SIZE][MAP_SIZE], GameState *gameState)
 {
     char buffer[5000];
     int ponteiroBuffer = 0;
@@ -92,7 +93,7 @@ void carregaLabirinto(FILE *arquivo, int labirinto[MAP_SIZE][MAP_SIZE], GameStat
     }
 }
 
-void carregaPosicoesLabirinto(int labirinto[MAP_SIZE][MAP_SIZE], GameState *gameState)
+void carregaPosicoesLabirinto(char labirinto[MAP_SIZE][MAP_SIZE], GameState *gameState)
 {
     srand(time(NULL));
     int pos = 0;
@@ -164,7 +165,7 @@ void posicionaAretefatoNoGameState(int x, int y, char a, GameState *gameState)
     }
 }
 
-void printa_labirinto(int labirinto[MAP_SIZE][MAP_SIZE])
+void printa_labirinto(char labirinto[MAP_SIZE][MAP_SIZE])
 {
     for (int i = 0; i < MAP_SIZE; i++)
     {

@@ -13,11 +13,11 @@ typedef struct
     int artefatosPosY[12]; // '/0' representa que já foi coletado
 } GameState;
 
-void iniciaLabirinto(int labirinto[MAP_SIZE][MAP_SIZE]);
-void carregaLabirinto(FILE *arquivo, int labirinto[MAP_SIZE][MAP_SIZE], GameState *gameState);
-void carregaPosicoesLabirinto(int labirinto[MAP_SIZE][MAP_SIZE], GameState *gameState);
+void iniciaLabirinto(char labirinto[MAP_SIZE][MAP_SIZE]);
+void carregaLabirinto(FILE *arquivo, char labirinto[MAP_SIZE][MAP_SIZE], GameState *gameState);
+void carregaPosicoesLabirinto(char labirinto[MAP_SIZE][MAP_SIZE], GameState *gameState);
 void posicionaAretefatoNoGameState(int x, int y, char a, GameState *gameState);
-void printa_labirinto(int labirinto[MAP_SIZE][MAP_SIZE]);
+void printa_labirinto(char labirinto[MAP_SIZE][MAP_SIZE]);
 GameState* criaGameState();
 
 #endif

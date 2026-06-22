@@ -102,7 +102,9 @@ static int recebe_mensagem(int timeout_ms, uint8_t *tipo_out, uint8_t **dados_ou
 
             if (i + 3 >= (int)bytes) continue;
             uint8_t tam  = buf[i + 1] >> 3;
+            uint8_t seq  = ((buf[i + 1] & 0x07) << 3) | (buf[i + 2] >> 5);
             uint8_t tipo = buf[i + 2] & 0x1F;
+            
 
             if (i + 3 + (int)tam >= (int)bytes) { i += tam + 3; continue; }
 
@@ -122,9 +124,8 @@ static int recebe_mensagem(int timeout_ms, uint8_t *tipo_out, uint8_t **dados_ou
                 return 1;
             }
 
-            if (acum_tipo == 0) acum_tipo = tipo;
-
             if (tam > 0) {
+                if (acum_tipo == 0) acum_tipo = tipo;
                 if (acum_tam + tam > acum_cap) {
                     acum_cap = (acum_cap == 0) ? 1024 : acum_cap * 2;
                     if (acum_cap < acum_tam + tam) acum_cap = acum_tam + tam;
@@ -301,15 +302,13 @@ int main(int argc, char *argv[]) {
 
         int got_map = 0;
         long long t0 = ts_ms();
-        while (!got_map && ts_ms() - t0 < 8000) {
+        while (!got_map && ts_ms() - t0 < 2000) {
             uint8_t t; uint8_t *d; uint32_t s;
-            if (!recebe_mensagem(2000, &t, &d, &s)) break;
+            if (!recebe_mensagem(2000   , &t, &d, &s)) continue;
             int r = processa(t, d, s);
             free(d);
             if (r == 1) got_map = 1;
             if (r == -1) { term_restore(); close(soquete_global); return 0; }
-            printf("got_map = %d\n", got_map);
-            fflush(stdout);
         }
     }
 

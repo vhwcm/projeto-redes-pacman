@@ -84,6 +84,28 @@ o Azul – regra da mão direita
 o Verde – alterna direita e esquerda a cada decisão que deve tomar
 o Amarelo – aleatório
 
+
+
+tipos de mensagem:
+0 - ACK
+1 - NACK
+2 - visualização
+3 - inicialização
+4 -> Dados
+5 -> txt
+6 -> jpg
+7 -> mp4
+8
+9  - Fim de jogo (sucesso)
+10 - direita
+11 - esquerda
+12 - cima
+13 - baixo
+14 - game over
+15 - Erros
+16 - Fim de Transmissão
+
+
 Servidor:
 • Cria / Carrega o mapa inicial
 • Conhece todo o tabuleiro

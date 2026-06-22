@@ -8,11 +8,11 @@
 #include <net/if.h>
 #include <unistd.h>
 #include <sys/time.h>
+#include <errno.h>
 
 #include "rede.h"
 
 int modo_loopback = 0;
-int pacotes_para_ignorar = 0;
 
 long long timestamp_ms(void)
 {
@@ -45,7 +45,6 @@ int verifica_crc8(const uint8_t *dados, int tamanho, uint8_t crc_recebido)
 }
 
 char *montaMensagem(Mensagem *mensagem)
-char *montaMensagem(Mensagem *mensagem)
 {
     int tamanhoDados      = mensagem->tamanho;
     int tamanho_envio     = TAM_MAXIMO_MENSAGEM + MIN_MENSAGE_SIZE;
@@ -67,7 +66,7 @@ char *montaMensagem(Mensagem *mensagem)
 int desmontaMensagem(const char *mensagem, Mensagem *protocolo)
 {
     if (mensagem[0] != MARCA_INICIO) {
-        return 0 0;
+        return 0;
     }
 
     protocolo->tamanho = (mensagem[1] >> 3) & 0x1F;
@@ -144,13 +143,15 @@ void enviaMensagem(Mensagem *mensagem, int soquete, uint8_t *seq)
         char *raw = montaMensagem(frame);
         int frameTam = TAM_MAXIMO_MENSAGEM + MIN_MENSAGE_SIZE;
         ssize_t sent = send(soquete, raw, frameTam, 0);
-        if (modo_loopback) pacotes_para_ignorar++;
         if (sent < 0)
             perror("ERROR: enviaMensagem send");
 
         free(raw);
         free(frame);
         offset += chunkSize;
+
+        // Throttle para evitar sobrecarga de buffer (Packet Loss) em arquivos pesados (MP4)
+        usleep(200); 
     }
 
     Mensagem *fim = criaMensagem();
@@ -161,7 +162,6 @@ void enviaMensagem(Mensagem *mensagem, int soquete, uint8_t *seq)
     fim->dados         = NULL;
     char *rawFim = montaMensagem(fim);
     send(soquete, rawFim, TAM_MAXIMO_MENSAGEM + MIN_MENSAGE_SIZE, 0);
-    if (modo_loopback) pacotes_para_ignorar++;
     free(rawFim);
     free(fim);
 }
@@ -177,7 +177,7 @@ void printaMensagem(Mensagem *mensagem)
 
     if (mensagem->tamanho > 0 && mensagem->dados != NULL) {
         printf("Dados: ");
-        for (int i = 0; i < mensagem->tamanho; i++) {
+        for (uint32_t i = 0; i < mensagem->tamanho; i++) {
             printf("%02X ", mensagem->dados[i]);
         }
         printf("\n");
@@ -197,7 +197,7 @@ void enviarAK(uint8_t seq, int soquete)
     ack.dados         = NULL;
     char *raw = montaMensagem(&ack);
     send(soquete, raw, TAM_MAXIMO_MENSAGEM + MIN_MENSAGE_SIZE, 0);
-    if (modo_loopback) pacotes_para_ignorar++;
+
     free(raw);
 }
 
@@ -210,7 +210,7 @@ void enviarNAK(uint8_t seq, int soquete)
     nak.dados         = NULL;
     char *raw = montaMensagem(&nak);
     send(soquete, raw, TAM_MAXIMO_MENSAGEM + MIN_MENSAGE_SIZE, 0);
-    if (modo_loopback) pacotes_para_ignorar++;
+
     free(raw);
 }
 

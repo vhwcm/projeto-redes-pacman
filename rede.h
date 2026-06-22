@@ -11,7 +11,7 @@
 
 typedef struct
 {
-    uint16_t tamanho;
+    uint32_t tamanho;
     uint8_t num_sequencia : 6;
     uint8_t tipo : 5;
     uint8_t *dados;
@@ -29,6 +29,5 @@ int verifica_crc8(const uint8_t *dados, int tamanho, uint8_t crc_recebido);
 void printaMensagem(Mensagem *mensagem);
 
 extern int modo_loopback;
-extern int pacotes_para_ignorar;
 
 #endif
