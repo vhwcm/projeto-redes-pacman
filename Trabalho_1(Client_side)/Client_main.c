@@ -15,7 +15,7 @@
 #include "Client_socket.h"
 #include "Pacman.h"
 
-const int timeoutMillis = 2000; // 200 milisegundos de timeout
+const int timeoutMillis = 200; // 200 milisegundos de timeout
 
 int main(int argc, char const *argv[]){
     // Verificação de argumentos

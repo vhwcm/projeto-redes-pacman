@@ -92,7 +92,7 @@ int verifica_crc8(const uint8_t *dados, int tamanho, uint8_t crc_recebido)
 Mensagem* cria_msg(uint8_t tipo, uint8_t sequencia){
     Mensagem* msg;
     if(!(msg = malloc(sizeof(Mensagem)))){
-        printf("ERROR: malloc msg\n");
+        perror("ERROR: malloc msg\n");
         return NULL;
     }
 
@@ -130,12 +130,12 @@ Mensagem* cria_msg(uint8_t tipo, uint8_t sequencia){
             msg->tipo = FIM_TRANSMISSAO;
             break;
         default:
-            printf("ERRO: Case inapropriado\n");
+            perror("ERRO: Case inapropriado\n");
     }
 
     uint8_t* dados;
     if(!(dados = malloc(3 + msg->tamanho))){
-        printf("ERROR: dados = malloc\n");
+        perror("ERROR: dados = malloc\n");
         return NULL;
     }
 
@@ -155,7 +155,7 @@ Mensagem* cria_msg(uint8_t tipo, uint8_t sequencia){
 char* monta_protocolo(Mensagem* msg){
     char* protocolo;
     if(!(protocolo = malloc(4 + msg->tamanho + 1))){
-        printf("ERROR: protocolo = malloc\n");
+        perror("ERROR: protocolo = malloc\n");
         return NULL;
     }
 
@@ -173,17 +173,17 @@ char* monta_protocolo(Mensagem* msg){
 void Enviar_p_servidor(int socket, uint8_t tipo, uint8_t sequencia){
     Mensagem* msg;
     if(!(msg = cria_msg(tipo, sequencia))){
-        printf("ERRO: cria_msg\n");
+        perror("ERRO: cria_msg\n");
         return;
     }
 
     char* buffer;     
     if(!(buffer = monta_protocolo(msg))){
-        printf("ERROR: buffer\n");
+        perror("ERROR: buffer\n");
         return;
     }
     if(!(send(socket, buffer, strlen(buffer),0))){
-        printf("ERROR: send\n");
+        perror("ERROR: send\n");
         return;
     }
 
@@ -194,7 +194,7 @@ void Enviar_p_servidor(int socket, uint8_t tipo, uint8_t sequencia){
 
 Mensagem *desmontar_msg(char* buffer){
     if(buffer[0] != MARCA_INICIO){
-        printf("ERROR: (desmontar_msg) Marca_inicio diferente\n");
+        perror("ERROR: (desmontar_msg) Marca_inicio diferente\n");
         return NULL;
     }
 
@@ -202,14 +202,14 @@ Mensagem *desmontar_msg(char* buffer){
     uint8_t crc_recv = buffer[4 + tam];
 
     if(!(verifica_crc8((uint8_t*)&buffer[4], tam, crc_recv))){
-        printf("ERROR: CRC8 diferente\n");
+        perror("ERROR: CRC8 diferente\n");
         return NULL;
     }
 
     // se não haver erro, atribuir os seus valores na struct
     Mensagem *msg;
     if(!(msg = malloc(sizeof(Mensagem)))){
-        printf("ERROR: malloc msg\n");
+        perror("ERROR: malloc msg\n");
         return NULL;
     }
     
@@ -221,7 +221,7 @@ Mensagem *desmontar_msg(char* buffer){
 
     if(msg->tipo != FIM_TRANSMISSAO){
         if(!(msg->dados = malloc(tam))){
-            printf("ERROR: malloc dados\n");
+            perror("ERROR: malloc dados\n");
             free(msg);
             return NULL;
         }
@@ -254,7 +254,7 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
         n = recv(socket, buffer, strlen(buffer),0);
     }
 
-    int seq/*, slide = 0*/;
+    int seq, slide = 1; // controle de sequencia e da janela
 
     // caso receber exceto ack e nack
     switch (msg->tipo){
@@ -276,7 +276,11 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
                         game_map[i + seq * 32] = msg->dados[i];
                     }
 
-                    Enviar_p_servidor(socket, ACK, seq);
+                    if(slide == 4){
+                        Enviar_p_servidor(socket, ACK, seq);
+                        slide = 0;
+                    }
+                    else{   slide++;}
 
                     if(seq == 63){  seq = 0;}   // reinicia a sequência
                     else{   seq++;}
@@ -284,6 +288,7 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
                 else{
                     // recebeu seq errada
                     Enviar_p_servidor(socket, NACK, seq);   
+                    slide = 0;
                 }
                 
                 DATA:
@@ -293,6 +298,7 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
                     // erro na desmontagem da msg
                     Enviar_p_servidor(socket, NACK, seq);   
                     n = recv(socket, buffer, sizeof(buffer),0);
+                    slide = 0;  // reseta a janela
                 }
             }while(msg->tipo != FIM_TRANSMISSAO);
             break;
@@ -306,7 +312,7 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
             txt++;
 
             if(!arquivo){
-                printf("ERROR: erro ao abrir o arquivo txt\n");
+                perror("ERROR: erro ao abrir o arquivo txt\n");
                 return 0;
             }
 
@@ -324,14 +330,19 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
                 if(msg->sequencia == seq){
                     fwrite(msg->dados, 1, msg->tamanho, arquivo);
 
-                    Enviar_p_servidor(socket, ACK, seq);
+                    if(slide == 4){
+                        Enviar_p_servidor(socket, ACK, seq);
+                        slide = 0;
+                    }
+                    else{   slide++;}
 
                     if(seq == 63){  seq = 0;}   // reinicia a sequência
                     else{   seq++;}
                 }
                 else{
                     // recebeu seq errada
-                    Enviar_p_servidor(socket, NACK, seq);   
+                    Enviar_p_servidor(socket, NACK, seq);  
+                    slide = 0; 
                 }
 
                 n = recv(socket, buffer, sizeof(buffer),0);  // espera o próximo pacote
@@ -340,6 +351,7 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
                     // erro na desmontagem da msg
                     Enviar_p_servidor(socket, NACK, seq);   
                     n = recv(socket, buffer, sizeof(buffer),0);
+                    slide = 0;
                 }
             }
 //-------------------------------------------------------------------------------------
@@ -352,7 +364,7 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
             jpg++;
 
             if(!imagem){
-                printf("ERROR: erro ao abrir o imagem jpg\n");
+                perror("ERROR: erro ao abrir o imagem jpg\n");
                 return 0;
             }
 
@@ -370,7 +382,11 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
                 if(msg->sequencia == seq){
                     fwrite(msg->dados, 1, msg->tamanho, imagem);
 
-                    Enviar_p_servidor(socket, ACK, seq);
+                    if(slide == 4){
+                        Enviar_p_servidor(socket, ACK, seq);
+                        slide = 0;
+                    }
+                    else{   slide++;}
 
                     if(seq == 63){  seq = 0;}   // reinicia a sequência
                     else{   seq++;}
@@ -378,6 +394,7 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
                 else{
                     // recebeu seq errada
                     Enviar_p_servidor(socket, NACK, seq);   
+                    slide = 0;
                 }
 
                 n = recv(socket, buffer, sizeof(buffer),0);  // espera o próximo pacote
@@ -386,6 +403,7 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
                     // erro na desmontagem da msg
                     Enviar_p_servidor(socket, NACK, seq);   
                     n = recv(socket, buffer, sizeof(buffer),0);
+                    slide = 0;
                 }
             }
 //-------------------------------------------------------------------------------------
@@ -398,7 +416,7 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
             mp4++;
 
             if(!video){
-                printf("ERROR: erro ao abrir o video mp4\n");
+                perror("ERROR: erro ao abrir o video mp4\n");
                 return 0;
             }
 
@@ -416,14 +434,19 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
                 if(msg->sequencia == seq){
                     fwrite(msg->dados, 1, msg->tamanho, video);
 
-                    Enviar_p_servidor(socket, ACK, seq);
+                    if(slide == 4){
+                        Enviar_p_servidor(socket, ACK, seq);
+                        slide = 0;
+                    }
+                    else{   slide++;}
 
                     if(seq == 63){  seq = 0;}   // reinicia a sequência
                     else{   seq++;}
                 }
                 else{
                     // recebeu seq errada
-                    Enviar_p_servidor(socket, NACK, seq);   
+                    Enviar_p_servidor(socket, NACK, seq);  
+                    slide = 0; 
                 }
 
                 n = recv(socket, buffer, sizeof(buffer),0);  // espera o próximo pacote
@@ -432,6 +455,7 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
                     // erro na desmontagem da msg
                     Enviar_p_servidor(socket, NACK, seq);   
                     n = recv(socket, buffer, sizeof(buffer),0);
+                    slide = 0;
                 }
             }            
             break;
@@ -443,7 +467,7 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
             return 2;
 //-------------------------------------------------------------------------------------
         default: //outros
-            printf("ERROR: tipo invalido\n");
+            perror("ERROR: tipo invalido\n");
     }
     free(buffer);
     free(msg->dados);
