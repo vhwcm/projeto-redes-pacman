@@ -13,20 +13,18 @@
 
 #include "Client_socket.h"
 
-const int timeoutMillis = 200; // 300 milisegundos de timeout por exemplo
-
 int txt = 0;
 int jpg = 0;
 int mp4 = 0;
 
 // timeout
-void configurar_timeout(int soquete, int timeoutMillis)
-{
+void configurar_timeout(int soquete, int timeoutMillis){
     struct timeval timeout = {
         .tv_sec = timeoutMillis / 1000,
         .tv_usec = (timeoutMillis % 1000) * 1000
     };
 
+    // setar para recv
     setsockopt(
         soquete, SOL_SOCKET, SO_RCVTIMEO,
         (char*) &timeout, sizeof(timeout)
@@ -101,6 +99,7 @@ Mensagem* cria_msg(uint8_t tipo, uint8_t sequencia){
     msg->m_inicio = MARCA_INICIO;
     msg->tamanho = 0b10000;
     msg->sequencia = sequencia;
+    msg->dados = "aaaaaaaaaaaaaaaa";
 
     switch (tipo){
         case 0:
@@ -135,7 +134,7 @@ Mensagem* cria_msg(uint8_t tipo, uint8_t sequencia){
     }
 
     uint8_t* dados;
-    if(!(dados = malloc(3))){
+    if(!(dados = malloc(3 + msg->tamanho))){
         printf("ERROR: dados = malloc\n");
         return NULL;
     }
@@ -143,10 +142,11 @@ Mensagem* cria_msg(uint8_t tipo, uint8_t sequencia){
     dados[0] = msg->tamanho;
     dados[1] = msg->sequencia;
     dados[2] = msg->tipo;
-    dados[3] = 0b0000000000000000;
+    memcpy(&dados[3], msg->dados, msg->tamanho);
 
     msg->CRC = calcula_crc8(dados, 3);
 
+    free(dados);
     return msg;
 
 }
@@ -176,19 +176,18 @@ void Enviar_p_servidor(int socket, uint8_t tipo, uint8_t sequencia){
         printf("ERRO: cria_msg\n");
         return;
     }
-    
+
     char* buffer;     
     if(!(buffer = monta_protocolo(msg))){
         printf("ERROR: buffer\n");
         return;
     }
-
     if(!(send(socket, buffer, strlen(buffer),0))){
         printf("ERROR: send\n");
         return;
     }
-    printf("msg enviada\n");
 
+    printf("msg enviado");
     free(msg);
     free(buffer);
 }
@@ -255,7 +254,7 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
         n = recv(socket, buffer, strlen(buffer),0);
     }
 
-    int seq;
+    int seq/*, slide = 0*/;
 
     // caso receber exceto ack e nack
     switch (msg->tipo){
@@ -276,6 +275,9 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
                     for(int i = 0; i < msg->tamanho; i++){
                         game_map[i + seq * 32] = msg->dados[i];
                     }
+
+                    Enviar_p_servidor(socket, ACK, seq);
+
                     if(seq == 63){  seq = 0;}   // reinicia a sequência
                     else{   seq++;}
                 }
@@ -438,7 +440,7 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
             return 0;
 //-------------------------------------------------------------------------------------
         case FIM_TRANSMISSAO: //fim_transmissao
-            break;
+            return 2;
 //-------------------------------------------------------------------------------------
         default: //outros
             printf("ERROR: tipo invalido\n");

@@ -8,11 +8,14 @@
 #include <net/if.h>
 
 #include <sys/socket.h>
+#include <sys/time.h>
 
 #include <ncurses.h>
 
 #include "Client_socket.h"
 #include "Pacman.h"
+
+const int timeoutMillis = 2000; // 200 milisegundos de timeout
 
 int main(int argc, char const *argv[]){
     // Verificação de argumentos
@@ -29,6 +32,9 @@ int main(int argc, char const *argv[]){
         printf("ERRO: cria_raw_socket\n");
         return 0;
     }
+
+    //definir timeout
+    configurar_timeout(socket, timeoutMillis);
 
     // Abrir jogo
     initscr();

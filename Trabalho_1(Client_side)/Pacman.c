@@ -112,17 +112,15 @@ void pacman_game(int lines, int cols, int socket) {
     noecho();
 
     char game_map[MAP_SIZE * MAP_SIZE];
-    
     // receber o mapa do servidor 
     do{
         Enviar_p_servidor(socket, INICIALIZACAO, 0);
     }while(Receber_d_servidor(socket, game_map) <= 0);
 
-
-    int pacman_x, pacman_y, pacman_life;
+    int pacman_x, pacman_y, pacman_life = 2;
     // receber o dado necessario para o jogo (life do pacman)
 
-    int ch;
+    int ch, n;
 
     while(1){
         // quadro de info
@@ -216,30 +214,33 @@ void pacman_game(int lines, int cols, int socket) {
             case KEY_UP:
                 do{
                     Enviar_p_servidor(socket, CIMA, 0);
-                }while(Receber_d_servidor(socket, game_map) <= 0);
+                }while((n = Receber_d_servidor(socket, game_map)) <= 0);
                 break;
             case KEY_DOWN:
                 do{
                     Enviar_p_servidor(socket, BAIXO, 0);
-                }while(Receber_d_servidor(socket, game_map) <= 0);
+                }while((n = Receber_d_servidor(socket, game_map)) <= 0);
                 break;
             case KEY_LEFT:
                 do{
                     Enviar_p_servidor(socket, ESQUERDA, 0);
-                }while(Receber_d_servidor(socket, game_map) <= 0);
+                }while((n = Receber_d_servidor(socket, game_map)) <= 0);
                 break;
             case KEY_RIGHT:
                 do{
                     Enviar_p_servidor(socket, DIREITA, 0);
-                }while(Receber_d_servidor(socket, game_map) <= 0);
+                }while((n = Receber_d_servidor(socket, game_map)) <= 0);
                 break;
             case KEY_F(1):  
                 // avisar o servidor o fim do jogo e espera ACK
                 do{
                     Enviar_p_servidor(socket, FIM_TRANSMISSAO, 0);
-                }while(Receber_d_servidor(socket, game_map) <= 0);
+                }while((n = Receber_d_servidor(socket, game_map)) <= 0);
                 return; // sair do jogo
         }
+
+        // quando receber fim_transmissao do servidor
+        if(n == 2){ return;}
 
         // calcula a luz do pacman
         if(counter == 5 - 1 && light < 5){
