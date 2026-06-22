@@ -118,7 +118,7 @@ void pacman_game(int lines, int cols, int socket) {
     }while(Receber_d_servidor(socket, game_map) <= 0);
 
     int pacman_x, pacman_y, pacman_life = 2;
-    // receber o dado necessario para o jogo (life do pacman)
+// receber o dado necessario para o jogo (life do pacman)
 
     int ch, n;
 

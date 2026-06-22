@@ -152,19 +152,20 @@ Mensagem* cria_msg(uint8_t tipo, uint8_t sequencia){
 }
 
 // Montar protocolo msg para ser enviado
-char* monta_protocolo(Mensagem* msg){
-    char* protocolo;
-    if(!(protocolo = malloc(4 + msg->tamanho + 1))){
+uint8_t* monta_protocolo(Mensagem* msg){
+    uint8_t* protocolo;
+    if(!(protocolo = malloc(3 + msg->tamanho + 1))){
         perror("ERROR: protocolo = malloc\n");
         return NULL;
     }
 
     protocolo[0] = msg->m_inicio;
-    protocolo[1] = msg->tamanho;
-    protocolo[2] = msg->sequencia;
-    protocolo[3] = msg->tipo;
-    memcpy(&protocolo[4], msg->dados, msg->tamanho);
-    protocolo[4 + msg->tamanho] = msg->CRC;
+    protocolo[1] = (msg->tamanho << 3);
+    protocolo[1] |= (msg->sequencia >> 3);
+    protocolo[2] = (msg->sequencia & 0b111) << 5;
+    protocolo[2] |= msg->tipo;
+    memcpy(&protocolo[3], msg->dados, msg->tamanho);
+    protocolo[3 + msg->tamanho] = msg->CRC;
 
     return protocolo;
 }
@@ -177,12 +178,12 @@ void Enviar_p_servidor(int socket, uint8_t tipo, uint8_t sequencia){
         return;
     }
 
-    char* buffer;     
+    uint8_t* buffer;     
     if(!(buffer = monta_protocolo(msg))){
         perror("ERROR: buffer\n");
         return;
     }
-    if(!(send(socket, buffer, strlen(buffer),0))){
+    if(!(send(socket, buffer, sizeof(buffer),0))){
         perror("ERROR: send\n");
         return;
     }
