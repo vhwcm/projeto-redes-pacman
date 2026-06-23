@@ -363,6 +363,11 @@ void movimentaPacMan(int soquete, int tipo, char labirinto[MAP_SIZE][MAP_SIZE], 
 static const int DDX[4] = {-1,  0,  1,  0};
 static const int DDY[4] = { 0,  1,  0, -1};
 
+static int is_parede_fantasma(char c) {
+    return c == 'X' || c == 'R' || c == 'G' || c == 'B' || c == 'Y'
+        || (c >= '1' && c <= '6');
+}
+
 static char movimentaUmFantasma(char labirinto[MAP_SIZE][MAP_SIZE],
                                  int gsIdx, char simbolo,
                                  int priority[4], int *currentDir,
@@ -373,15 +378,31 @@ static char movimentaUmFantasma(char labirinto[MAP_SIZE][MAP_SIZE],
     int x = gameState->artefatosPosX[gsIdx];
     int y = gameState->artefatosPosY[gsIdx];
 
+    int nx_reto = x + DDX[*currentDir];
+    int ny_reto = y + DDY[*currentDir];
+    int caminho_reto_livre =
+        (nx_reto >= 0 && nx_reto < MAP_SIZE && ny_reto >= 0 && ny_reto < MAP_SIZE)
+        && !is_parede_fantasma(labirinto[nx_reto][ny_reto]);
+
+    if (caminho_reto_livre) {
+        char dest = labirinto[nx_reto][ny_reto];
+        labirinto[x][y] = '0';
+        labirinto[nx_reto][ny_reto] = simbolo;
+        gameState->artefatosPosX[gsIdx] = nx_reto;
+        gameState->artefatosPosY[gsIdx] = ny_reto;
+        return dest;
+    }
+
     for (int i = 0; i < 4; i++) {
         int dir = priority[i];
+        if (dir == *currentDir) continue;
         int nx  = x + DDX[dir];
         int ny  = y + DDY[dir];
 
         if (nx < 0 || nx >= MAP_SIZE || ny < 0 || ny >= MAP_SIZE) continue;
-        char dest = labirinto[nx][ny];
-        if (dest == 'X' || dest == 'R' || dest == 'G' || dest == 'B' || dest == 'Y') continue;
+        if (is_parede_fantasma(labirinto[nx][ny])) continue;
 
+        char dest = labirinto[nx][ny];
         labirinto[x][y] = '0';
         labirinto[nx][ny] = simbolo;
         gameState->artefatosPosX[gsIdx] = nx;

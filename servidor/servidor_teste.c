@@ -77,10 +77,11 @@ static void envia_tipo(uint8_t tipo) {
 
 static int recebe_mensagem(int timeout_ms, uint8_t *tipo_out, uint8_t **dados_out, uint32_t *tam_out) {
     unsigned char buf[4096];
-    uint8_t *acum     = NULL;
-    uint32_t acum_tam = 0;
-    uint32_t acum_cap = 0;
+    uint8_t *acum      = NULL;
+    uint32_t acum_tam  = 0;
+    uint32_t acum_cap  = 0;
     uint8_t  acum_tipo = 0;
+    uint8_t  last_seq  = 0xFF;
 
     struct timeval tv = {0, 100 * 1000};
     setsockopt(soquete_global, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
@@ -125,14 +126,17 @@ static int recebe_mensagem(int timeout_ms, uint8_t *tipo_out, uint8_t **dados_ou
             }
 
             if (tam > 0) {
-                if (acum_tipo == 0) acum_tipo = tipo;
-                if (acum_tam + tam > acum_cap) {
-                    acum_cap = (acum_cap == 0) ? 1024 : acum_cap * 2;
-                    if (acum_cap < acum_tam + tam) acum_cap = acum_tam + tam;
-                    acum = realloc(acum, acum_cap);
+                if (seq != last_seq) {
+                    last_seq = seq;
+                    if (acum_tipo == 0) acum_tipo = tipo;
+                    if (acum_tam + tam > acum_cap) {
+                        acum_cap = (acum_cap == 0) ? 1024 : acum_cap * 2;
+                        if (acum_cap < acum_tam + tam) acum_cap = acum_tam + tam;
+                        acum = realloc(acum, acum_cap);
+                    }
+                    memcpy(acum + acum_tam, &buf[i + 3], tam);
+                    acum_tam += tam;
                 }
-                memcpy(acum + acum_tam, &buf[i + 3], tam);
-                acum_tam += tam;
             }
 
             i += tam + 3;
@@ -229,6 +233,17 @@ static void exibe_mp4(uint8_t *dados, uint32_t tam) {
     fclose(f);
 
     printf(BD YL "\n╔═══════════════════════╗\n║  🏆 PASTILHA MP4!  ║\n╚═══════════════════════╝\n" R);
+    printf("[DIAG] Bytes recebidos: %u\n", tam);
+    {
+        FILE *orig = fopen("naruto_video.mp4", "rb");
+        if (orig) {
+            fseek(orig, 0, SEEK_END);
+            long orig_sz = ftell(orig);
+            fclose(orig);
+            printf("[DIAG] Tamanho original: %ld bytes — %s\n", orig_sz,
+                   (long)tam == orig_sz ? "OK (sem perda)" : "DIVERGENTE (perda de pacotes!)");
+        }
+    }
     fflush(stdout);
 
     char cmd[256];
@@ -274,6 +289,9 @@ int main(int argc, char *argv[]) {
     char *iface = argv[1];
     modo_loopback  = (strcmp(iface, "lo") == 0);
     soquete_global = cria_raw_socket(iface);
+
+    int rcvbuf = 8 * 1024 * 1024;
+    setsockopt(soquete_global, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf));
 
     envia_tipo(2);
 
