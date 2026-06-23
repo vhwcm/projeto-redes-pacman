@@ -20,4 +20,14 @@ void game_info(int x, int y, int t1, int t2, int t3, int life);
 // mostra a tela do jogo
 void pacman_game(int lines, int cols, int socket);
 
+#define ANSI_COLOR_RED     "\x1b[31m"
+#define ANSI_COLOR_GREEN   "\x1b[32m"
+#define ANSI_COLOR_YELLOW  "\x1b[33m"
+#define ANSI_COLOR_BLUE    "\x1b[34m"
+#define ANSI_COLOR_WHITE   "\x1b[37m"
+#define ANSI_COLOR_RESET   "\x1b[0m"
+
+int my_getch(void);
+void clear_screen(void);
+
 #endif

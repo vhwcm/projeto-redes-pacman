@@ -9,6 +9,7 @@
 #include <net/if.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <ncurses.h>
 #include <sys/time.h>
 
 #include "Client_socket.h"
@@ -98,7 +99,7 @@ Mensagem* cria_msg(uint8_t tipo, uint8_t sequencia){
     }
 
     msg->m_inicio = MARCA_INICIO;
-    msg->tamanho = 0b11111;
+    msg->tamanho = 31;
     msg->sequencia = sequencia;
     msg->dados = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
@@ -184,34 +185,35 @@ void Enviar_p_servidor(int socket, uint8_t tipo, uint8_t sequencia){
         perror("ERROR: buffer\n");
         return;
     }
-    if(!(send(socket, buffer, sizeof(buffer),0))){
+    if((send(socket, buffer, 35,0) <= 0)){
         perror("ERROR: send\n");
         return;
     }
 
     printf("msg enviado");
+    fflush(stdout);
     free(msg);
     free(buffer);
 }
 
 Mensagem *desmontar_msg(char* buffer){
     if(buffer[0] != MARCA_INICIO){
-        perror("ERROR: (desmontar_msg) Marca_inicio diferente\n");
+        fprintf(stderr, "ERROR: (desmontar_msg) Marca_inicio diferente\n");
         return NULL;
     }
 
     uint8_t tam = buffer[1] >> 3;
     uint8_t crc_recv = buffer[3 + tam];
 
-    if(!(verifica_crc8((uint8_t*)&buffer[4], tam, crc_recv))){
-        perror("ERROR: CRC8 diferente\n");
+    if(!(verifica_crc8((uint8_t *)&buffer[4], tam, crc_recv))){
+        fprintf(stderr, "ERROR: CRC8 diferente\n");
         return NULL;
     }
 
     // se não haver erro, atribuir os seus valores na struct
     Mensagem *msg;
     if(!(msg = malloc(sizeof(Mensagem)))){
-        perror("ERROR: malloc msg\n");
+        perror("ERROR: malloc msg");
         return NULL;
     }
     
@@ -247,32 +249,43 @@ Mensagem *desmontar_msg(char* buffer){
     return msg;
 }
 
-// Recebe mensagem
 int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
-    char *buffer = malloc(1024);
-    int offset;
-    // faz monitoramento da rede
-    while(1){
-        recv(socket, buffer, 1042,0);
-        // procura o marcador de inicio
-        for(int i = 0; i < 1024; i++){
-            if(buffer[i] == MARCA_INICIO){
-                offset = i;
-                goto INICIO;
+    char *buffer = malloc(35);
+    Mensagem *msg = NULL;
+    char *pacote = malloc(35);
+    struct sockaddr_ll sll;
+    socklen_t sll_len = sizeof(sll);
+    int n;
+
+    while (1) {
+        int r = recvfrom(socket, pacote, 35, 0, (struct sockaddr *)&sll, &sll_len);
+        
+        if (r < 0) {
+            free(buffer);
+            free(pacote);
+            return 0; // Timeout: sinaliza para a lógica superior retransmitir
+        }
+
+        if (r < 35) continue;
+        if (sll.sll_pkttype == PACKET_OUTGOING) continue; // Ignora pacotes enviados por si mesmo
+        if (pacote[0] == MARCA_INICIO) {
+            int tipo_pacote = pacote[2] & 0b11111;
+            // Se for um pacote que o próprio cliente envia (eco da rede), descartamos imediatamente
+            if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO || 
+                tipo_pacote == ESQUERDA || tipo_pacote == DIREITA) {
+            fflush(stdout);
+            usleep(10000);
+                    continue; 
+            }
+
+            msg = desmontar_msg(pacote);
+            if (msg != NULL) {
+                break; // Mensagem válida do servidor recebida!
+            } else {
+                // Falhou na desmontagem (ex: CRC inválido ou sequência errada)
+                Enviar_p_servidor(socket, NACK, seq);
             }
         }
-    }
-    INICIO:
-    Mensagem *msg;
-    int n;
-    char *pacote = malloc(35);
-    memcpy(pacote, buffer + offset, 35);
-
-    // desmonta a msg e atribui na estrutura
-    while((msg = desmontar_msg(pacote)) == NULL || n <= 0){
-        // erro na desmontagem da msg
-        Enviar_p_servidor(socket, NACK, seq);   
-        n = recv(socket, pacote, strlen(pacote),0);
     }
     slide++;
     seq++;
@@ -293,7 +306,10 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
             do{
                 if(msg->sequencia == seq){
                     for(int i = 0; i < msg->tamanho; i++){
-                        game_map[i + seq_mapa * 31] = msg->dados[i];
+                        int idx = i + seq_mapa * 31;
+                        if (idx < MAP_SIZE * MAP_SIZE) {
+                            game_map[idx] = msg->dados[i];
+                        }
                     }
 
                     if(slide == 4){
@@ -314,12 +330,12 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
                 }
                 
                 DATA:
-                n = recv(socket, pacote, strlen(pacote),0);  // espera o próximo pacote
+                n = recv(socket, pacote, 35,0);  // espera o próximo pacote
 
                 while((msg = desmontar_msg(pacote)) == NULL || n <= 0){
                     // erro na desmontagem da msg
                     Enviar_p_servidor(socket, NACK, seq);   
-                    n = recv(socket, pacote, sizeof(pacote),0);
+                    n = recv(socket, pacote, 35,0);
                     slide = 0;  // reseta a janela
                 }
 
@@ -382,12 +398,12 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
                 }
 
                 TEXT:
-                n = recv(socket, pacote, sizeof(pacote),0);  // espera o próximo pacote
+                n = recv(socket, pacote, 35,0);  // espera o próximo pacote
              
                 while((msg = desmontar_msg(pacote)) == NULL || n <= 0){
                     // erro na desmontagem da msg
                     Enviar_p_servidor(socket, NACK, seq);   
-                    n = recv(socket, pacote, sizeof(pacote),0);
+                    n = recv(socket, pacote, 35,0);
                     slide = 0;
                 }
 
@@ -453,12 +469,12 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
                 }
 
                 IMAGE:
-                n = recv(socket, pacote, sizeof(pacote),0);  // espera o próximo pacote
+                n = recv(socket, pacote, 35,0);  // espera o próximo pacote
              
                 while((msg = desmontar_msg(pacote)) == NULL || n <= 0){
                     // erro na desmontagem da msg
                     Enviar_p_servidor(socket, NACK, seq);   
-                    n = recv(socket, pacote, sizeof(pacote),0);
+                    n = recv(socket, pacote, 35,0);
                     slide = 0;
                 }
 
@@ -533,12 +549,12 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
                 }
 
                 VIDEO:
-                n = recv(socket, pacote, sizeof(pacote),0);  // espera o próximo pacote
+                n = recv(socket, pacote, 35,0);  // espera o próximo pacote
              
                 while((msg = desmontar_msg(pacote)) == NULL || n <= 0){
                     // erro na desmontagem da msg
                     Enviar_p_servidor(socket, NACK, seq);   
-                    n = recv(socket, pacote, sizeof(pacote),0);
+                    n = recv(socket, pacote, 35,0);
                     slide = 0;
                 }
 
@@ -590,7 +606,7 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
     }
     free(buffer);
     free(pacote);
-    free(msg->dados);
-    free(msg);
-    return n;
+    if(msg && msg->dados) free(msg->dados);
+    if(msg) free(msg);
+    return 1;
 }

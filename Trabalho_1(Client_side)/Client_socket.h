@@ -1,5 +1,6 @@
 #ifndef CLIENT_SOCKET
 #define CLIENT_SOCKET
+#include <stdint.h>
 
 #include "Pacman.h"
 

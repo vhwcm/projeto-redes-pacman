@@ -4,7 +4,7 @@ CFLAGS = -Wall -Wextra
 PROG = Pacman_game
 
 $(PROG): Client_main.o Client_socket.o Pacman.o
-	$(CC) $(CFLAGS) -o $(PROG) Client_main.o Client_socket.o Pacman.o	-lncurses -ltinfo
+	$(CC) $(CFLAGS) -o $(PROG) Client_main.o Client_socket.o Pacman.o
 
 Client_main.o: Client_main.c Client_socket.h Pacman.h 
 	$(CC) $(CFLAGS) -c Client_main.c

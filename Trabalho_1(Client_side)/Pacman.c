@@ -1,12 +1,112 @@
+#include <stdio.h>
 #include <string.h>
-#include <ncurses.h>
+#include <unistd.h>
+#include <termios.h>
+#include <sys/select.h>
 #include "Pacman.h"
 #include "Client_socket.h"
+
+#define A_BOLD (1<<8)
+#define COLOR_PAIR(x) (x)
+#define stdscr NULL
+#define keypad(...)
+#define noecho(...)
+#define init_pair(...)
+
+#define KEY_UP 'w'
+#define KEY_DOWN 's'
+#define KEY_LEFT 'a'
+#define KEY_RIGHT 'd'
+#define KEY_F(n) 'q'
+
+static const char* get_color(int id) {
+    switch(id) {
+        case 1: return ANSI_COLOR_RED;
+        case 2: return ANSI_COLOR_YELLOW; 
+        case 3: return ANSI_COLOR_GREEN;
+        case 4: return ANSI_COLOR_BLUE;
+        case 5: return ANSI_COLOR_YELLOW;
+        case 6: return ANSI_COLOR_RED;
+        case 7: return ANSI_COLOR_GREEN;
+        case 8: return ANSI_COLOR_BLUE;
+        case 9: return ANSI_COLOR_WHITE;
+        case 10: return ANSI_COLOR_RESET; 
+        default: return ANSI_COLOR_RESET;
+    }
+}
+
+static void attron(int attr) {
+    int color_id = attr & 0xFF;
+    int is_bold = (attr & A_BOLD) != 0;
+    if (is_bold) printf("\x1b[1m");
+    printf("%s", get_color(color_id));
+}
+
+static void attroff(int attr) {
+    (void)attr;
+    printf("\x1b[0m");
+}
+
+#define mvprintw(r, c, fmt, ...) printf("\x1b[%d;%dH" fmt, (r)+1, (c)+1, ##__VA_ARGS__)
+#define mvaddch(r, c, ch) printf("\x1b[%d;%dH%c", (r)+1, (c)+1, ch)
+#define printw(...) printf(__VA_ARGS__)
+#define refresh() fflush(stdout)
+
+void clear_screen(void) {
+    printf("\033[H\033[2J");
+    fflush(stdout);
+}
+
+static void flushinp(void) {
+    struct timeval tv = {0, 0};
+    fd_set fds;
+    FD_ZERO(&fds);
+    FD_SET(STDIN_FILENO, &fds);
+    while (select(STDIN_FILENO + 1, &fds, NULL, NULL, &tv) > 0) {
+        getchar();
+    }
+}
+
+int my_getch(void) {
+    struct termios oldt, newt;
+    int ch;
+    tcgetattr(STDIN_FILENO, &oldt);
+    newt = oldt;
+    newt.c_lflag &= ~(ICANON | ECHO);
+    tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+    ch = getchar();
+    if (ch == 27) {
+        struct timeval tv = {0, 50000};
+        fd_set fds;
+        FD_ZERO(&fds);
+        FD_SET(STDIN_FILENO, &fds);
+        if (select(STDIN_FILENO + 1, &fds, NULL, NULL, &tv) > 0) {
+            int ch2 = getchar();
+            if (ch2 == '[') {
+                FD_ZERO(&fds);
+                FD_SET(STDIN_FILENO, &fds);
+                if (select(STDIN_FILENO + 1, &fds, NULL, NULL, &tv) > 0) {
+                    int ch3 = getchar();
+                    switch(ch3) {
+                        case 'A': ch = 'w'; break;
+                        case 'B': ch = 's'; break;
+                        case 'C': ch = 'd'; break;
+                        case 'D': ch = 'a'; break;
+                    }
+                }
+            }
+        }
+    }
+    tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+    if (ch >= 'A' && ch <= 'Z') ch += 32;
+    return ch;
+}
 
 int pacman_life;
 int t1 = 0; //txt
 int t2 = 0; //jpg
 int t3 = 0; //mp4
+int seq_send = 0;
 
 void print_title(int lines, int cols) {
     char* inicio = "Digite algo para iniciar...";
@@ -31,7 +131,7 @@ void print_title(int lines, int cols) {
     for(int i = 0; i < 5; i++)
     {
         mvprintw(x - 5 + i,
-            (cols - strlen(titulo[i])) / 2,
+            (int)((cols - strlen(titulo[i])) / 2),
             "%s", titulo[i]);
     }
     attroff(COLOR_PAIR(2)|A_BOLD);
@@ -187,9 +287,10 @@ void pacman_game(int lines, int cols, int socket) {
     // receber o mapa do servidor 
     do{
         Enviar_p_servidor(socket, INICIALIZACAO, 0);
+        printf("======================================================\n");
     }while(Receber_d_servidor(socket, game_map) <= 0);
 
-    int pacman_x, pacman_y;
+    int pacman_x = 0, pacman_y = 0;
 // receber o dado necessario para o jogo (life do pacman)
 /*
     do{
@@ -197,7 +298,7 @@ void pacman_game(int lines, int cols, int socket) {
     }while((pacman_life = Receber_d_servidor(socket) <= 0);
 */
 
-    int ch, n;
+    int ch, n = 1;
 
     while(1){
         // quadro de info
@@ -279,38 +380,47 @@ void pacman_game(int lines, int cols, int socket) {
 
         mvprintw(x*2, y*2, " ");
         refresh();
-
-        // aceita o input do usuário
         keypad(stdscr, TRUE);
-        ch = getch();
-        keypad(stdscr, FALSE);  // desativa o teclado
+        flushinp();
+        ch = my_getch();
+        keypad(stdscr, FALSE);
 
         // se ch != F1, enviar a seta e atualizar o mapa
         switch(ch){
             case KEY_UP:
                 do{
-                    Enviar_p_servidor(socket, CIMA, 0);
+                    if(n <= 0)  seq_send--;
+                    Enviar_p_servidor(socket, CIMA, seq_send);
+                    seq_send++;
                 }while((n = Receber_d_servidor(socket, game_map)) <= 0);
                 break;
             case KEY_DOWN:
                 do{
-                    Enviar_p_servidor(socket, BAIXO, 0);
+                    if(n <= 0) seq_send--;
+                    Enviar_p_servidor(socket, BAIXO, seq_send);
+                    seq_send++;
                 }while((n = Receber_d_servidor(socket, game_map)) <= 0);
                 break;
             case KEY_LEFT:
                 do{
-                    Enviar_p_servidor(socket, ESQUERDA, 0);
+                    if(n <= 0) seq_send--;
+                    Enviar_p_servidor(socket, ESQUERDA, seq_send);
+                    seq_send++;
                 }while((n = Receber_d_servidor(socket, game_map)) <= 0);
                 break;
             case KEY_RIGHT:
                 do{
-                    Enviar_p_servidor(socket, DIREITA, 0);
+                    if(n <= 0) seq_send--;
+                    Enviar_p_servidor(socket, DIREITA, seq_send);
+                    seq_send++;
                 }while((n = Receber_d_servidor(socket, game_map)) <= 0);
                 break;
             case KEY_F(1):  
                 // avisar o servidor o fim do jogo e espera ACK
                 do{
-                    Enviar_p_servidor(socket, FIM_TRANSMISSAO, 0);
+                    if(n <= 0) seq_send--;
+                    Enviar_p_servidor(socket, FIM_TRANSMISSAO, seq_send);
+                    seq_send++;
                 }while((n = Receber_d_servidor(socket, game_map)) <= 0);
                 return; // sair do jogo
         }
@@ -321,14 +431,14 @@ void pacman_game(int lines, int cols, int socket) {
             //printar game clear na tela
             print_gameclear(lines, cols);
             keypad(stdscr, TRUE);
-            getch();
+            my_getch();
             break;
         }
         else if(n == 14){
             //printar game over na tela
             print_gameover(lines, cols);
             keypad(stdscr, TRUE);
-            getch();
+            my_getch();
             break;
         }
 
@@ -341,6 +451,6 @@ void pacman_game(int lines, int cols, int socket) {
             counter++;
         }
 
-        clear(); //limpa a tela uma vez para atualizar ela
+        clear_screen(); //limpa a tela uma vez para atualizar ela
     }
 }
