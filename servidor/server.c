@@ -28,7 +28,7 @@ void movimentaPacMan(int soquete, int tipo, char labirinto[MAP_SIZE][MAP_SIZE], 
 void movimentaFantasmas(int soquete, char labirinto[MAP_SIZE][MAP_SIZE], GameState *gameState);
 void enviarArquivo(int soquete, const char *caminho, uint8_t tipo);
 void enviaGameOver(int soquete);
-int leProtocoloMontaMensagem(Mensagem *mensagem, unsigned char buffer[2048], int *i, int soquete);
+// int leProtocoloMontaMensagem(Mensagem *mensagem, unsigned char buffer[2048], int *i, int soquete);
 void meu_log(char *mensagem);
 
 static uint8_t expected_seq_recv = 0;
@@ -110,93 +110,74 @@ int main(int argc, char *argv[])
         if (modo_loopback && from.sll_pkttype == PACKET_OUTGOING)
             continue;
 
-        for (int i = 0; i < bytes; i++)
+        Mensagem *mensagemCliente = criaMensagem();
+        if (desmontaMensagem((char *)buffer, mensagemCliente))
         {
-            int encontrado = 0;
-
-            if (buffer[i] == MARCA_INICIO)
-            {
-                int offset = 1;
-                if (i + offset + 1 < bytes) {
-                    uint8_t tamanho = buffer[i + offset] >> 3;
-                    if (i + offset + 2 + (int)tamanho < (int)bytes) {
-                        uint8_t crc = buffer[i + offset + 2 + tamanho];
-                        if (verifica_crc8(&buffer[i + offset + 2], tamanho, crc)) {
-                            encontrado = 1;
-                        }
-                    }
-                }
-            }
-
-            if (encontrado)
-            {
-                Mensagem *mensagemCliente = criaMensagem();
-                unsigned int tipo = leProtocoloMontaMensagem(mensagemCliente, buffer, &i, soquete);
-                
-                if (modo_loopback) {
-                    if (tipo == 0 || tipo == 1 || tipo == 5 || tipo == 6 || tipo == 7 || tipo == 14 || tipo == 16) {
-                        free(mensagemCliente->dados);
-                        free(mensagemCliente);
-                        continue; // Nosso próprio pacote (eco do servidor)
-                    }
-                    if (tipo == 2 && mensagemCliente->tamanho > 0) {
-                        free(mensagemCliente->dados);
-                        free(mensagemCliente);
-                        continue; // Nosso próprio pacote (mapa enviado pelo servidor)
-                    }
-                }
-
-                
-                // ACKs e NAKs (mensagens de controle)
-                if (tipo == 1 || tipo == 15) {
-                    printf("Recebido %s para sequencia %d\n", tipo == 1 ? "AK" : "NAK", mensagemCliente->num_sequencia);
-                    free(mensagemCliente->dados);
+            unsigned int tipo = mensagemCliente->tipo;
+            
+            if (modo_loopback) {
+                if (tipo == 0 || tipo == 1 || tipo == 5 || tipo == 6 || tipo == 7 || tipo == 14 || tipo == 16) {
+                    if (mensagemCliente->dados) free(mensagemCliente->dados);
                     free(mensagemCliente);
-                    continue;
+                    continue; // Nosso próprio pacote (eco do servidor)
                 }
-
-
-                // Lógica de Sequencialização para mensagens de DADOS do cliente
-                if (mensagemCliente->num_sequencia == expected_seq_recv) {
-                    printf("Mensagem recebida na sequencia correta: %d\n", expected_seq_recv);
-                    expected_seq_recv = (expected_seq_recv + 1) % 64;
-                    ack_counter++;
-                    ultimo_ack_ts = timestamp_ms();
-
-                    if (ack_counter >= 4) {
-                        printf("Enviando AK (cumulativo) para sequencia %d\n", (expected_seq_recv + 63) % 64);
-                        enviarAK((expected_seq_recv + 63) % 64, soquete);
-                        ack_counter = 0;
-                        ultimo_ack_ts = timestamp_ms();
-                    }
-
-                    switch (tipo)
-                    {
-                    case 2:
-                        meu_log("vizualização recebida");
-                        enviarVisualizacao(soquete, gameState->labirinto);
-                        break;
-                    case 10:
-                    case 11:
-                    case 12:
-                    case 13:
-                        meu_log("movimentacao recebida");
-                        movimentaPacMan(soquete, tipo, gameState->labirinto, gameState);
-                        movimentaFantasmas(soquete, gameState->labirinto, gameState);
-                        enviarVisualizacao(soquete, gameState->labirinto);
-                        break;
-                    default:
-                        break;
-                    }
-                } else {
-                    printf("Erro de sequencia! Esperado: %d, Recebido: %d. Enviando NAK.\n", 
-                           expected_seq_recv, mensagemCliente->num_sequencia);
-                    enviarNAK(expected_seq_recv, soquete);
+                if (tipo == 2 && mensagemCliente->tamanho > 0) {
+                    if (mensagemCliente->dados) free(mensagemCliente->dados);
+                    free(mensagemCliente);
+                    continue; // Nosso próprio pacote (mapa enviado pelo servidor)
                 }
-
-                free(mensagemCliente->dados);
-                free(mensagemCliente);
             }
+
+            // ACKs e NAKs (mensagens de controle)
+            if (tipo == 0 || tipo == 1) {
+                printf("Recebido %s para sequencia %d\n", tipo == 0 ? "AK" : "NAK", mensagemCliente->num_sequencia);
+                if (mensagemCliente->dados) free(mensagemCliente->dados);
+                free(mensagemCliente);
+                continue;
+            }
+
+            // Lógica de Sequencialização para mensagens de DADOS do cliente
+            if (mensagemCliente->num_sequencia == expected_seq_recv) {
+                printf("Mensagem recebida na sequencia correta: %d\n", expected_seq_recv);
+                expected_seq_recv = (expected_seq_recv + 1) % 64;
+                ack_counter++;
+                ultimo_ack_ts = timestamp_ms();
+
+                if (ack_counter >= 4) {
+                    printf("Enviando AK (cumulativo) para sequencia %d\n", (expected_seq_recv + 63) % 64);
+                    enviarAK((expected_seq_recv + 63) % 64, soquete);
+                    ack_counter = 0;
+                    ultimo_ack_ts = timestamp_ms();
+                }
+
+                switch (tipo)
+                {
+                case 2:
+                    meu_log("vizualização recebida");
+                    enviarVisualizacao(soquete, gameState->labirinto);
+                    break;
+                case 10:
+                case 11:
+                case 12:
+                case 13:
+                    meu_log("movimentacao recebida");
+                    movimentaPacMan(soquete, tipo, gameState->labirinto, gameState);
+                    movimentaFantasmas(soquete, gameState->labirinto, gameState);
+                    enviarVisualizacao(soquete, gameState->labirinto);
+                    break;
+                default:
+                    break;
+                }
+            } else {
+                printf("Erro de sequencia! Esperado: %d, Recebido: %d. Enviando NAK.\n", 
+                       expected_seq_recv, mensagemCliente->num_sequencia);
+                enviarNAK(expected_seq_recv, soquete);
+            }
+
+            if (mensagemCliente->dados) free(mensagemCliente->dados);
+            free(mensagemCliente);
+        } else {
+            free(mensagemCliente);
         }
     }
     return 0;
@@ -212,7 +193,7 @@ void enviarVisualizacao(int soquete, char labirinto[MAP_SIZE][MAP_SIZE])
     }
 
     Mensagem *msg = criaMensagem();
-    msg->tipo    = 2;
+    msg->tipo    = 4;
     msg->tamanho = MAP_SIZE * MAP_SIZE;
     msg->dados   = total_data;
 
@@ -457,24 +438,7 @@ void movimentaFantasmas(int soquete, char labirinto[MAP_SIZE][MAP_SIZE], GameSta
     }
 }
 
-int leProtocoloMontaMensagem(Mensagem *mensagem, unsigned char buffer[2048], int *i, int soquete)
-{
-    (void)soquete;
-    int offset = 1;
-    uint8_t tamanho          = buffer[*i + offset] >> 3;
-    uint8_t numnum_sequencia = ((buffer[*i + offset] & 0x07) << 3) | (buffer[*i + offset + 1] >> 5);
-    uint8_t tipo             = buffer[*i + offset + 1] & 0x1F;
-    mensagem->tamanho        = tamanho;
-    mensagem->num_sequencia  = numnum_sequencia;
-    mensagem->tipo           = tipo;
-    if (tamanho > 0)
-    {
-        mensagem->dados = malloc(tamanho);
-        memcpy(mensagem->dados, &buffer[*i + offset + 2], tamanho);
-    }
-    (*i) += tamanho + 3;
-    return tipo;
-}
+/* A função leProtocoloMontaMensagem foi removida pois não é mais utilizada (substituída por desmontaMensagem) */
 
 void meu_log(char *mensagem) {
     printf("%s\n", mensagem);

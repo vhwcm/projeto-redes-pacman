@@ -123,47 +123,86 @@ int cria_raw_socket(char* nome_interface_rede) {
     return soquete;
 }
 
+static char* constroi_frame(Mensagem *mensagem, int frame_index, uint8_t seq_inicial, int num_frames) {
+    Mensagem *frame = criaMensagem();
+    if (frame_index < num_frames) {
+        int offset = frame_index * TAM_MAXIMO_MENSAGEM;
+        int chunkSize = mensagem->tamanho - offset;
+        if (chunkSize > TAM_MAXIMO_MENSAGEM)
+            chunkSize = TAM_MAXIMO_MENSAGEM;
+        
+        frame->tipo = mensagem->tipo;
+        frame->num_sequencia = (seq_inicial + frame_index) % 64;
+        frame->tamanho = chunkSize;
+        frame->dados = mensagem->dados + offset;
+    } else {
+        frame->tipo = 16;
+        frame->num_sequencia = (seq_inicial + frame_index) % 64;
+        frame->tamanho = 0;
+        frame->dados = NULL;
+    }
+    char *raw = montaMensagem(frame);
+    free(frame);
+    return raw;
+}
+
 void enviaMensagem(Mensagem *mensagem, int soquete, uint8_t *seq)
 {
     int totalDados = mensagem->tamanho;
-    int offset = 0;
+    int num_frames = (totalDados > 0) ? (totalDados + TAM_MAXIMO_MENSAGEM - 1) / TAM_MAXIMO_MENSAGEM : 0;
+    int frames_totais = num_frames + 1;
 
-    while (offset < totalDados) {
-        int chunkSize = totalDados - offset;
-        if (chunkSize > TAM_MAXIMO_MENSAGEM)
-            chunkSize = TAM_MAXIMO_MENSAGEM;
+    int base = 0;
+    int proximo_envio = 0;
+    uint8_t seq_inicial = *seq;
+    int janela_tamanho = 5;
 
-        Mensagem *frame = criaMensagem();
-        frame->tipo          = mensagem->tipo;
-        frame->num_sequencia = *seq;
-        *seq                 = (*seq + 1) % 64;
-        frame->tamanho       = chunkSize;
-        frame->dados         = mensagem->dados + offset;
+    struct timeval tv;
+    tv.tv_sec = 0;
+    tv.tv_usec = 200000;
+    setsockopt(soquete, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
 
-        char *raw = montaMensagem(frame);
-        int frameTam = TAM_MAXIMO_MENSAGEM + MIN_MENSAGE_SIZE;
-        ssize_t sent = send(soquete, raw, frameTam, 0);
-        if (sent < 0)
-            perror("ERROR: enviaMensagem send");
+    while (base < frames_totais) {
+        // verifica se há espaço na janela e não acabou os frames ainda.
+        while (proximo_envio < base + janela_tamanho && proximo_envio < frames_totais) {
+            char *raw = constroi_frame(mensagem, proximo_envio, seq_inicial, num_frames);
+            int frameTam = TAM_MAXIMO_MENSAGEM + MIN_MENSAGE_SIZE;
+            ssize_t sent = send(soquete, raw, frameTam, 0);
+            if (sent < 0) perror("ERROR: enviaMensagem send");
+            free(raw);
+            proximo_envio++;
+        }
 
-        free(raw);
-        free(frame);
-        offset += chunkSize;
-
-        // Throttle para evitar sobrecarga de buffer (Packet Loss) em arquivos pesados (MP4)
-        usleep(200); 
+        char buffer[TAM_MAXIMO_MENSAGEM + MIN_MENSAGE_SIZE + 500];
+        Mensagem protocolo;
+        
+        int bytes_recebidos = recv(soquete, buffer, TAM_MAXIMO_MENSAGEM + MIN_MENSAGE_SIZE + 50, 0);
+        if (bytes_recebidos > 0) {
+            if (desmontaMensagem(buffer, &protocolo)) {
+                if (protocolo.tipo == 0) {
+                    uint8_t ack_seq = protocolo.num_sequencia;
+                    uint8_t seq_base = (seq_inicial + base) % 64;
+                    int diff = (ack_seq - seq_base + 64) % 64;
+                    if (diff >= 0 && diff < janela_tamanho) {
+                        base = base + diff + 1;
+                    }
+                } else if (protocolo.tipo == 1) {
+                    uint8_t nak_seq = protocolo.num_sequencia;
+                    uint8_t seq_base = (seq_inicial + base) % 64;
+                    int diff = (nak_seq - seq_base + 64) % 64;
+                    if (diff >= 0 && diff < janela_tamanho) {
+                        base = base + diff;
+                        proximo_envio = base;
+                    }
+                }
+                if (protocolo.dados) free(protocolo.dados);
+            }
+        } else {
+            proximo_envio = base;
+        }
     }
-
-    Mensagem *fim = criaMensagem();
-    fim->tipo          = 16;
-    fim->num_sequencia = *seq;
-    *seq               = (*seq + 1) % 64;
-    fim->tamanho       = 0;
-    fim->dados         = NULL;
-    char *rawFim = montaMensagem(fim);
-    send(soquete, rawFim, TAM_MAXIMO_MENSAGEM + MIN_MENSAGE_SIZE, 0);
-    free(rawFim);
-    free(fim);
+    
+    *seq = (seq_inicial + frames_totais) % 64;
 }
 
 
@@ -191,7 +230,7 @@ void printaMensagem(Mensagem *mensagem)
 void enviarAK(uint8_t seq, int soquete)
 {
     Mensagem ack;
-    ack.tipo          = 1;
+    ack.tipo          = 0;
     ack.num_sequencia = seq;
     ack.tamanho       = 0;
     ack.dados         = NULL;
@@ -204,7 +243,7 @@ void enviarAK(uint8_t seq, int soquete)
 void enviarNAK(uint8_t seq, int soquete)
 {
     Mensagem nak;
-    nak.tipo          = 15;
+    nak.tipo          = 1;
     nak.num_sequencia = seq;
     nak.tamanho       = 0;
     nak.dados         = NULL;
