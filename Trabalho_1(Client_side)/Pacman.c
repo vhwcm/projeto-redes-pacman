@@ -3,6 +3,11 @@
 #include "Pacman.h"
 #include "Client_socket.h"
 
+int pacman_life;
+int t1 = 0; //txt
+int t2 = 0; //jpg
+int t3 = 0; //mp4
+
 void print_title(int lines, int cols) {
     char* inicio = "Digite algo para iniciar...";
 
@@ -28,6 +33,74 @@ void print_title(int lines, int cols) {
         mvprintw(x - 5 + i,
             (cols - strlen(titulo[i])) / 2,
             "%s", titulo[i]);
+    }
+    attroff(COLOR_PAIR(2)|A_BOLD);
+    refresh();
+}
+
+void print_gameclear(int lines, int cols){
+    char *g[] = {
+    " ######    ###    ##   ## ######",
+    "##        ## ##   ### ### ##    ",
+    "##  #### #######  ## # ## ######",
+    "##   ##  ##   ##  ##   ## ##    ",
+    " ######  ##   ##  ##   ## ######"
+    };
+
+    char *c[]= {
+    "###### ##      #######    ###    ######",
+    "##     ##      ##       ## ##   ##   ##",
+    "##     ##      ######  #######  ###### ",
+    "##     ##      ##      ##   ##  ## ##  ",
+    "###### ####### ####### ##   ##  ##  ###"
+    };
+
+    int x = lines / 2;
+    int y = (cols) / 2;
+
+    attron(COLOR_PAIR(2)|A_BOLD);
+    for(int i = 0; i < 5; i++){
+        mvprintw(x - 10 + i,
+            y + 25,
+            "%s", g[i]);
+
+        mvprintw(x - 3 + i,
+            y + 21,
+            "%s", c[i]);
+    }
+    attroff(COLOR_PAIR(2)|A_BOLD);
+    refresh();
+}
+
+void print_gameover(int lines, int cols){
+    char *g[] = {
+    " ######    ###    ##   ## ######",
+    "##        ## ##   ### ### ##    ",
+    "##  #### #######  ## # ## ######",
+    "##   ##  ##   ##  ##   ## ##    ",
+    " ######  ##   ##  ##   ## ######"
+    };
+    
+    char *o[] = {
+    "####### ##   ## ####### ###### ",
+    "##   ## ##   ## ##      ##   ##",
+    "##   ## ##   ## ######  ###### ",
+    "##   ##  ## ##  ##      ## ##  ",
+    "#######   ###   ####### ##  ###"
+    };
+
+    int x = lines / 2;
+    int y = (cols) / 2;
+
+    attron(COLOR_PAIR(2)|A_BOLD);
+    for(int i = 0; i < 5; i++){
+        mvprintw(x - 10 + i,
+            y + 25,
+            "%s", g[i]);
+
+        mvprintw(x - 3 + i,
+            y + 25,
+            "%s", o[i]);
     }
     attroff(COLOR_PAIR(2)|A_BOLD);
     refresh();
@@ -89,8 +162,7 @@ void game_info(int x, int y, int t1, int t2, int t3, int life){
 }
 
 void pacman_game(int lines, int cols, int socket) {
-    int t1 = 0, t2 = 0, t3 = 0, // treasures 
-        light = 1, counter = 0;;    // luz do pacman
+    int  light = 1, counter = 0;;    // luz do pacman
 
     int x = lines / 2;
     int y = cols / 2;  
@@ -110,15 +182,20 @@ void pacman_game(int lines, int cols, int socket) {
 
     keypad(stdscr, FALSE);
     noecho();
-
+    
     char game_map[MAP_SIZE * MAP_SIZE];
     // receber o mapa do servidor 
     do{
         Enviar_p_servidor(socket, INICIALIZACAO, 0);
     }while(Receber_d_servidor(socket, game_map) <= 0);
 
-    int pacman_x, pacman_y, pacman_life = 2;
+    int pacman_x, pacman_y;
 // receber o dado necessario para o jogo (life do pacman)
+/*
+    do{
+        Enviar_p_servidor(socket, VIDA_PACMAN, 0);
+    }while((pacman_life = Receber_d_servidor(socket) <= 0);
+*/
 
     int ch, n;
 
@@ -138,7 +215,6 @@ void pacman_game(int lines, int cols, int socket) {
         attroff(COLOR_PAIR(9));
 
         // desenha parte visivel do pacman
-
         for(int i = 0; i < MAP_SIZE; i++){
             for(int j = 0; j < MAP_SIZE; j++){
                 if(game_map[i * MAP_SIZE + j] == 'P'){
@@ -241,6 +317,20 @@ void pacman_game(int lines, int cols, int socket) {
 
         // quando receber fim_transmissao do servidor
         if(n == 2){ return;}
+        else if(n == 9){
+            //printar game clear na tela
+            print_gameclear(lines, cols);
+            keypad(stdscr, TRUE);
+            getch();
+            break;
+        }
+        else if(n == 14){
+            //printar game over na tela
+            print_gameover(lines, cols);
+            keypad(stdscr, TRUE);
+            getch();
+            break;
+        }
 
         // calcula a luz do pacman
         if(counter == 5 - 1 && light < 5){

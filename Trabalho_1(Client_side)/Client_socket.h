@@ -14,12 +14,16 @@
 #define TXT 0b00101             // 5
 #define JPG 0b00110             // 6
 #define MP4 0b00111             // 7
+#define GAME_CLEAR 0b01001      // 9
 #define DIREITA 0b01010         // 10
 #define ESQUERDA 0b01011        // 11
 #define CIMA 0b01100            // 12
 #define BAIXO 0b01101           // 13
+#define GAME_OVER 0b01110       // 14
 #define ERROS 0b01111           // 15
 #define FIM_TRANSMISSAO 0b10000 // 16
+
+#define TAM_MAX 31
 
 typedef struct
 {

@@ -16,6 +16,7 @@
 int txt = 0;
 int jpg = 0;
 int mp4 = 0;
+int seq = 0, slide = 0;
 
 // timeout
 void configurar_timeout(int soquete, int timeoutMillis){
@@ -97,9 +98,9 @@ Mensagem* cria_msg(uint8_t tipo, uint8_t sequencia){
     }
 
     msg->m_inicio = MARCA_INICIO;
-    msg->tamanho = 0b10000;
+    msg->tamanho = 0b11111;
     msg->sequencia = sequencia;
-    msg->dados = "aaaaaaaaaaaaaaaa";
+    msg->dados = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
     switch (tipo){
         case 0:
@@ -167,7 +168,7 @@ uint8_t* monta_protocolo(Mensagem* msg){
     memcpy(&protocolo[3], msg->dados, msg->tamanho);
     protocolo[3 + msg->tamanho] = msg->CRC;
 
-    return protocolo;
+    return protocolo;   
 }
 
 // Envia mensagem
@@ -199,8 +200,8 @@ Mensagem *desmontar_msg(char* buffer){
         return NULL;
     }
 
-    uint8_t tam = buffer[1];
-    uint8_t crc_recv = buffer[4 + tam];
+    uint8_t tam = buffer[1] >> 3;
+    uint8_t crc_recv = buffer[3 + tam];
 
     if(!(verifica_crc8((uint8_t*)&buffer[4], tam, crc_recv))){
         perror("ERROR: CRC8 diferente\n");
@@ -215,10 +216,16 @@ Mensagem *desmontar_msg(char* buffer){
     }
     
     msg->m_inicio = buffer[0];
-    msg->tamanho = buffer[1];
-    msg->sequencia = buffer[2];
-    msg->tipo = buffer[3];
-    msg->CRC = buffer[crc_recv];
+    msg->tamanho = (buffer[1] >> 3);
+    msg->sequencia = ((buffer[1] & 0b111) << 3 |
+                        (buffer[2] >> 5));
+
+    if(seq != msg->sequencia){
+        free(msg);
+        return NULL;
+    }
+                    
+    msg->tipo = buffer[2] & 0b11111;
 
     if(msg->tipo != FIM_TRANSMISSAO){
         if(!(msg->dados = malloc(tam))){
@@ -226,8 +233,8 @@ Mensagem *desmontar_msg(char* buffer){
             free(msg);
             return NULL;
         }
-        memcpy(msg->dados, &buffer[4], tam);
-        msg->dados[tam] = '\0';
+        int lixo = TAM_MAX - msg->tamanho;
+        memcpy(msg->dados, &buffer[3 + lixo], msg->tamanho);
     }
     else{
         msg->dados = NULL;
@@ -242,25 +249,39 @@ Mensagem *desmontar_msg(char* buffer){
 
 // Recebe mensagem
 int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
+    char *buffer = malloc(1024);
+    int offset;
+    // faz monitoramento da rede
+    while(1){
+        recv(socket, buffer, 1042,0);
+        // procura o marcador de inicio
+        for(int i = 0; i < 1024; i++){
+            if(buffer[i] == MARCA_INICIO){
+                offset = i;
+                goto INICIO;
+            }
+        }
+    }
+    INICIO:
     Mensagem *msg;
     int n;
-    char *buffer = malloc(36);
-    if((n = recv(socket, buffer, 36,0)) <= 0)
-        return -1;  // erro timeout ou recv
+    char *pacote = malloc(35);
+    memcpy(pacote, buffer + offset, 35);
 
     // desmonta a msg e atribui na estrutura
-    while((msg = desmontar_msg(buffer)) == NULL || n <= 0){
+    while((msg = desmontar_msg(pacote)) == NULL || n <= 0){
         // erro na desmontagem da msg
-        Enviar_p_servidor(socket, NACK, 0);   
-        n = recv(socket, buffer, strlen(buffer),0);
+        Enviar_p_servidor(socket, NACK, seq);   
+        n = recv(socket, pacote, strlen(pacote),0);
     }
-
-    int seq, slide = 1; // controle de sequencia e da janela
+    slide++;
+    seq++;
+    int seq_mapa = 0;
 
     // caso receber exceto ack e nack
     switch (msg->tipo){
         case ACK:
-            break;
+            return 1;
 //-------------------------------------------------------------------------------------
         case NACK:
             return 0;
@@ -268,13 +289,11 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
         case VISUALIZACAO: //visualização;
             break;
 //-------------------------------------------------------------------------------------
-        case DADOS: // atualização do mapa
-            seq = 0;
-        
+        case DADOS: // atualização do mapa        
             do{
-                if(msg->sequencia == seq && msg->tipo == DADOS){
+                if(msg->sequencia == seq){
                     for(int i = 0; i < msg->tamanho; i++){
-                        game_map[i + seq * 32] = msg->dados[i];
+                        game_map[i + seq_mapa * 31] = msg->dados[i];
                     }
 
                     if(slide == 4){
@@ -285,6 +304,8 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
 
                     if(seq == 63){  seq = 0;}   // reinicia a sequência
                     else{   seq++;}
+
+                    seq_mapa++;
                 }
                 else{
                     // recebeu seq errada
@@ -293,14 +314,38 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
                 }
                 
                 DATA:
-                n = recv(socket, buffer, strlen(buffer),0);  // espera o próximo pacote
+                n = recv(socket, pacote, strlen(pacote),0);  // espera o próximo pacote
 
-                while((msg = desmontar_msg(buffer)) == NULL || n <= 0){
+                while((msg = desmontar_msg(pacote)) == NULL || n <= 0){
                     // erro na desmontagem da msg
                     Enviar_p_servidor(socket, NACK, seq);   
-                    n = recv(socket, buffer, sizeof(buffer),0);
+                    n = recv(socket, pacote, sizeof(pacote),0);
                     slide = 0;  // reseta a janela
                 }
+
+                // caso receber NACK
+                if(msg->tipo == NACK){
+                    if(slide == 0){
+                        if(seq == 0){
+                            Enviar_p_servidor(socket, ACK, 63);
+                        }
+                        else{
+                            Enviar_p_servidor(socket, ACK, seq-1);
+                        }
+                        goto DATA;
+                    }
+                    else{
+                        if(seq == 0){
+                            Enviar_p_servidor(socket, NACK, 63);
+                        }
+                        else{
+                            Enviar_p_servidor(socket, NACK, seq-1);
+                        }
+                        goto DATA;
+                    }
+                }
+                else if(msg->tipo == GAME_CLEAR){   goto GC;}
+                else if(msg->tipo == GAME_OVER){    goto GO;}
             }while(msg->tipo != FIM_TRANSMISSAO);
             break;
 //-------------------------------------------------------------------------------------
@@ -317,17 +362,7 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
                 return 0;
             }
 
-            seq = 0;
-            while(1){
-                if(msg->tipo == FIM_TRANSMISSAO){
-                    // muda para receber dados
-                    seq = 0;
-                    fclose(arquivo);
-                    if(txt == 0){   system("less TEXTO_2.jpg &");}
-                    else{   system("less TEXTO_1.jpg &");}
-                    goto DATA;
-                }
-
+            do{
                 if(msg->sequencia == seq){
                     fwrite(msg->dados, 1, msg->tamanho, arquivo);
 
@@ -346,15 +381,44 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
                     slide = 0; 
                 }
 
-                n = recv(socket, buffer, sizeof(buffer),0);  // espera o próximo pacote
+                TEXT:
+                n = recv(socket, pacote, sizeof(pacote),0);  // espera o próximo pacote
              
-                while((msg = desmontar_msg(buffer)) == NULL || n <= 0){
+                while((msg = desmontar_msg(pacote)) == NULL || n <= 0){
                     // erro na desmontagem da msg
                     Enviar_p_servidor(socket, NACK, seq);   
-                    n = recv(socket, buffer, sizeof(buffer),0);
+                    n = recv(socket, pacote, sizeof(pacote),0);
                     slide = 0;
                 }
-            }
+
+                // caso receber NACK
+                if(msg->tipo == NACK){
+                    if(slide == 0){
+                        if(seq == 0){
+                            Enviar_p_servidor(socket, ACK, 63);
+                        }
+                        else{
+                            Enviar_p_servidor(socket, ACK, seq-1);
+                        }
+                        goto TEXT;
+                    }
+                    else{
+                        if(seq == 0){
+                            Enviar_p_servidor(socket, NACK, 63);
+                        }
+                        else{
+                            Enviar_p_servidor(socket, NACK, seq-1);
+                        }
+                        goto TEXT;
+                    }
+                }
+            }while(msg->tipo != FIM_TRANSMISSAO);
+            // muda para receber dados
+            fclose(arquivo);
+            t1++;
+            if(txt == 0){   system("less TEXTO_2.jpg &");}
+            else{   system("less TEXTO_1.jpg &");}
+            goto DATA;            
 //-------------------------------------------------------------------------------------
         case JPG: //jpg
             FILE *imagem;
@@ -369,17 +433,7 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
                 return 0;
             }
 
-            seq = 0;
-            while(1){
-                if(msg->tipo == FIM_TRANSMISSAO){
-                    // muda para receber dados
-                    seq = 0;
-                    fclose(imagem);
-                    if(jpg == 0){   system("feh IMAGEM_2.jpg &");}
-                    else{   system("feh IMAGEM_1.jpg &");}
-                    goto DATA;
-                }
-
+            do{
                 if(msg->sequencia == seq){
                     fwrite(msg->dados, 1, msg->tamanho, imagem);
 
@@ -398,15 +452,44 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
                     slide = 0;
                 }
 
-                n = recv(socket, buffer, sizeof(buffer),0);  // espera o próximo pacote
+                IMAGE:
+                n = recv(socket, pacote, sizeof(pacote),0);  // espera o próximo pacote
              
-                while((msg = desmontar_msg(buffer)) == NULL || n <= 0){
+                while((msg = desmontar_msg(pacote)) == NULL || n <= 0){
                     // erro na desmontagem da msg
                     Enviar_p_servidor(socket, NACK, seq);   
-                    n = recv(socket, buffer, sizeof(buffer),0);
+                    n = recv(socket, pacote, sizeof(pacote),0);
                     slide = 0;
                 }
-            }
+
+                // caso receber NACK
+                if(msg->tipo == NACK){
+                    if(slide == 0){
+                        if(seq == 0){
+                            Enviar_p_servidor(socket, ACK, 63);
+                        }
+                        else{
+                            Enviar_p_servidor(socket, ACK, seq-1);
+                        }
+                        goto IMAGE;
+                    }
+                    else{
+                        if(seq == 0){
+                            Enviar_p_servidor(socket, NACK, 63);
+                        }
+                        else{
+                            Enviar_p_servidor(socket, NACK, seq-1);
+                        }
+                        goto IMAGE;
+                    }
+                }
+            }while(msg->tipo != FIM_TRANSMISSAO);
+            // muda para receber dados
+            fclose(imagem);
+            t2++;
+            if(jpg == 0){   system("feh IMAGEM_2.jpg &");}
+            else{   system("feh IMAGEM_1.jpg &");}
+            goto DATA;
 //-------------------------------------------------------------------------------------
         case MP4: //mp4
             FILE *video;
@@ -421,8 +504,7 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
                 return 0;
             }
 
-            seq = 0;
-            while(1){
+            do{
                 if(msg->tipo == FIM_TRANSMISSAO){
                     // muda para receber dados
                     seq = 0;
@@ -450,16 +532,52 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
                     slide = 0; 
                 }
 
-                n = recv(socket, buffer, sizeof(buffer),0);  // espera o próximo pacote
+                VIDEO:
+                n = recv(socket, pacote, sizeof(pacote),0);  // espera o próximo pacote
              
-                while((msg = desmontar_msg(buffer)) == NULL || n <= 0){
+                while((msg = desmontar_msg(pacote)) == NULL || n <= 0){
                     // erro na desmontagem da msg
                     Enviar_p_servidor(socket, NACK, seq);   
-                    n = recv(socket, buffer, sizeof(buffer),0);
+                    n = recv(socket, pacote, sizeof(pacote),0);
                     slide = 0;
                 }
-            }            
-            break;
+
+                // caso receber NACK
+                if(msg->tipo == NACK){
+                    if(slide == 0){
+                        if(seq == 0){
+                            Enviar_p_servidor(socket, ACK, 63);
+                        }
+                        else{
+                            Enviar_p_servidor(socket, ACK, seq-1);
+                        }
+                        goto VIDEO;
+                    }
+                    else{
+                        if(seq == 0){
+                            Enviar_p_servidor(socket, NACK, 63);
+                        }
+                        else{
+                            Enviar_p_servidor(socket, NACK, seq-1);
+                        }
+                        goto VIDEO;
+                    }
+                }
+            }while(msg->tipo != FIM_TRANSMISSAO);       
+            // muda para receber dados
+            fclose(video);
+            t3++;
+            if(mp4 == 0){   system("mpv VIDEO_2.jpg &");}
+            else{   system("mpv VIDEO_1.jpg &");}
+            goto DATA;
+//-------------------------------------------------------------------------------------
+        case GAME_CLEAR:
+            GC:
+            return 9;
+//-------------------------------------------------------------------------------------
+        case GAME_OVER:
+            GO:
+            return 14;
 //-------------------------------------------------------------------------------------
         case ERROS: //erros
             return 0;
@@ -471,7 +589,8 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
             perror("ERROR: tipo invalido\n");
     }
     free(buffer);
+    free(pacote);
     free(msg->dados);
     free(msg);
-    return 1;
+    return n;
 }
