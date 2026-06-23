@@ -8,9 +8,14 @@
 #include <net/if.h>
 
 #include <sys/socket.h>
+#include <sys/time.h>
+
+#include <ncurses.h>
 
 #include "Client_socket.h"
 #include "Pacman.h"
+
+const int timeoutMillis = 200; // 200 milisegundos de timeout
 
 int main(int argc, char const *argv[]){
     // Verificação de argumentos
@@ -28,26 +33,31 @@ int main(int argc, char const *argv[]){
         return 0;
     }
 
+    //definir timeout
+    configurar_timeout(socket, timeoutMillis);
+
     // Abrir jogo
-        // criar os dados básicos do jogo(tela,teclado,etc)
-        printf("Criando a base do jogo\n");
-    char* table;
-    if(!(table = game_table())){
-        printf("ERROR: game table");
-        return 0;
+    initscr();
+    curs_set(0);
+
+    // testa se pode exibir outras cores no terminal
+    if(has_colors() == FALSE){ 
+        endwin();
+        printf("Seu terminal não suporta cores.\n");
+        return 1;
     }
-    // recebe os parametros do servidor
-    character* list;
-    if(!(list = create_character(socket))){
-        printf("ERROR: create ch\n");
-        return 0;
-    }
-    // Iniciar jogo
-    printf("iniciar o jogo\n");
-    pacman(table, list);
-    
-    // Encerra o socket
-    printf("encerrar socket\n");
-    close(socket);
+  
+    start_color();
+
+    // tela: digite algo para iniciar
+    print_title(LINES, COLS);
+
+    getch();
+    clear();
+
+    // iniciar a tela do jogo
+    pacman_game(LINES, COLS, socket);
+
+    endwin();
     return 0;
 }
