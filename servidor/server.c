@@ -193,7 +193,7 @@ void enviarVisualizacao(int soquete, char labirinto[MAP_SIZE][MAP_SIZE])
     }
 
     Mensagem *msg = criaMensagem();
-    msg->tipo    = 4;
+    msg->tipo    = 2;
     msg->tamanho = MAP_SIZE * MAP_SIZE;
     msg->dados   = total_data;
 

@@ -67,7 +67,7 @@ int cria_raw_socket(const char* nome_interface_rede) {
 }
 
 // Calcula CRC
-uint8_t calcula_crc8(const uint8_t *dados, int tamanho)
+uint8_t calcula_crc8(const char *dados, int tamanho)
 {
     uint8_t crc = 0x00;
     for (int i = 0; i < tamanho; i++)
@@ -84,7 +84,7 @@ uint8_t calcula_crc8(const uint8_t *dados, int tamanho)
     return crc;
 }
 
-int verifica_crc8(const uint8_t *dados, int tamanho, uint8_t crc_recebido)
+int verifica_crc8(const char *dados, int tamanho, uint8_t crc_recebido)
 {
     uint8_t crc_calc = calcula_crc8(dados, tamanho);
     return crc_calc == crc_recebido;
@@ -99,9 +99,9 @@ Mensagem* cria_msg(uint8_t tipo, uint8_t sequencia){
     }
 
     msg->m_inicio = MARCA_INICIO;
-    msg->tamanho = 31;
+    msg->tamanho = 0;
     msg->sequencia = sequencia;
-    msg->dados = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    msg->dados = NULL;
 
     switch (tipo){
         case 0:
@@ -146,7 +146,7 @@ Mensagem* cria_msg(uint8_t tipo, uint8_t sequencia){
     dados[2] = msg->tipo;
     memcpy(&dados[3], msg->dados, msg->tamanho);
 
-    msg->CRC = calcula_crc8(dados, 3);
+    msg->CRC = calcula_crc8(msg->dados, msg->tamanho);
 
     free(dados);
     return msg;
@@ -156,8 +156,9 @@ Mensagem* cria_msg(uint8_t tipo, uint8_t sequencia){
 // Montar protocolo msg para ser enviado
 uint8_t* monta_protocolo(Mensagem* msg){
     uint8_t* protocolo;
-    if(!(protocolo = malloc(3 + msg->tamanho + 1))){
-        perror("ERROR: protocolo = malloc\n");
+    // Pela regra de negócio, todo pacote na rede terá tamanho fixo de 35 bytes (31 de área de payload)
+    if(!(protocolo = calloc(35, sizeof(uint8_t)))){
+        perror("ERROR: protocolo = calloc\n");
         return NULL;
     }
 
@@ -174,6 +175,14 @@ uint8_t* monta_protocolo(Mensagem* msg){
 
 // Envia mensagem
 void Enviar_p_servidor(int socket, uint8_t tipo, uint8_t sequencia){
+    // printf("envio de mensagem, sequencia: %d, tipo: %d\n", sequencia, tipo);
+    if (tipo == NACK) {
+        // printf("envio de nack\n");
+    }
+
+    if (tipo == ACK) {
+        // printf("envio de ack\n");
+    }
     Mensagem* msg;
     if(!(msg = cria_msg(tipo, sequencia))){
         perror("ERRO: cria_msg\n");
@@ -190,7 +199,7 @@ void Enviar_p_servidor(int socket, uint8_t tipo, uint8_t sequencia){
         return;
     }
 
-    printf("msg enviado");
+ //   printf("msg \n");
     fflush(stdout);
     free(msg);
     free(buffer);
@@ -202,10 +211,10 @@ Mensagem *desmontar_msg(char* buffer){
         return NULL;
     }
 
-    uint8_t tam = buffer[1] >> 3;
-    uint8_t crc_recv = buffer[3 + tam];
+    uint8_t tam = (((unsigned char)buffer[1]) >> 3) & 0x1F;
+    uint8_t crc_recv = (unsigned char)buffer[3 + tam];
 
-    if(!(verifica_crc8((uint8_t *)&buffer[4], tam, crc_recv))){
+    if(!(verifica_crc8((char *)&buffer[3], tam, crc_recv))){
         fprintf(stderr, "ERROR: CRC8 diferente\n");
         return NULL;
     }
@@ -216,16 +225,13 @@ Mensagem *desmontar_msg(char* buffer){
         perror("ERROR: malloc msg");
         return NULL;
     }
-    
-    msg->m_inicio = buffer[0];
-    msg->tamanho = (buffer[1] >> 3);
-    msg->sequencia = ((buffer[1] & 0b111) << 3 |
-                        (buffer[2] >> 5));
 
-    if(seq != msg->sequencia){
-        free(msg);
-        return NULL;
-    }
+    msg->m_inicio = (unsigned char)buffer[0];
+    msg->tamanho = (((unsigned char)buffer[1]) >> 3) & 0x1F;
+    msg->sequencia = ((((unsigned char)buffer[1]) & 0b111) << 3) |
+                        (((unsigned char)buffer[2]) >> 5);
+
+
                     
     msg->tipo = buffer[2] & 0b11111;
 
@@ -235,17 +241,27 @@ Mensagem *desmontar_msg(char* buffer){
             free(msg);
             return NULL;
         }
-        int lixo = TAM_MAX - msg->tamanho;
-        memcpy(msg->dados, &buffer[3 + lixo], msg->tamanho);
+        memcpy(msg->dados, &buffer[3], msg->tamanho);
     }
     else{
         msg->dados = NULL;
     }
         
 
-    printf("TESTE dados:\n");
-    printf("%s\n",msg->dados);
-
+    /* 
+    printf("TESTE dados seq: %d:\n", msg->sequencia);
+    if (msg->tamanho > 0 && msg->dados != NULL) {
+        for (int i = 0; i < msg->tamanho; i++) {
+            printf("%c", msg->dados[i]);
+        }
+        printf("\n");
+    } else {
+        printf("(sem dados)\n");
+    }
+    if (msg == NULL) {
+        printf("Mensagem nula");
+    }
+    */
     return msg;
 }
 
@@ -256,31 +272,33 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
     struct sockaddr_ll sll;
     socklen_t sll_len = sizeof(sll);
     int n;
-
     while (1) {
-        int r = recvfrom(socket, pacote, 35, 0, (struct sockaddr *)&sll, &sll_len);
+        n = recvfrom(socket, pacote, 35, 0, (struct sockaddr *)&sll, &sll_len);
         
-        if (r < 0) {
+        if (n < 0) {
             free(buffer);
             free(pacote);
             return 0; // Timeout: sinaliza para a lógica superior retransmitir
         }
 
-        if (r < 35) continue;
+        if (n < 35) continue;
         if (sll.sll_pkttype == PACKET_OUTGOING) continue; // Ignora pacotes enviados por si mesmo
         if (pacote[0] == MARCA_INICIO) {
             int tipo_pacote = pacote[2] & 0b11111;
             // Se for um pacote que o próprio cliente envia (eco da rede), descartamos imediatamente
             if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO || 
-                tipo_pacote == ESQUERDA || tipo_pacote == DIREITA) {
+                tipo_pacote == ESQUERDA || tipo_pacote == DIREITA || tipo_pacote == 0 || tipo_pacote == 1) {
             fflush(stdout);
             usleep(10000);
                     continue; 
             }
-
-            msg = desmontar_msg(pacote);
+            // printf("tipo =%d\n", tipo_pacote);
+            if (tipo_pacote == 2) {
+                msg = desmontar_msg(pacote);
+            }
             if (msg != NULL) {
-                break; // Mensagem válida do servidor recebida!
+                // printf("Sucesso, mensagem recebida!\n");
+                break;
             } else {
                 // Falhou na desmontagem (ex: CRC inválido ou sequência errada)
                 Enviar_p_servidor(socket, NACK, seq);
@@ -288,9 +306,7 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
         }
     }
     slide++;
-    seq++;
     int seq_mapa = 0;
-
     // caso receber exceto ack e nack
     switch (msg->tipo){
         case ACK:
@@ -299,11 +315,13 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
         case NACK:
             return 0;
 //-------------------------------------------------------------------------------------
-        case VISUALIZACAO: //visualização;
+        case DADOS  : //visualização;
             break;
 //-------------------------------------------------------------------------------------
-        case DADOS: // atualização do mapa        
+        case VISUALIZACAO: // atualização do mapa     
+            // printf("visualização recebida\n");   
             do{
+                // printf("Sequencia esperada:  %d\n", seq);
                 if(msg->sequencia == seq){
                     for(int i = 0; i < msg->tamanho; i++){
                         int idx = i + seq_mapa * 31;
@@ -318,24 +336,57 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
                     }
                     else{   slide++;}
 
-                    if(seq == 63){  seq = 0;}   // reinicia a sequência
-                    else{   seq++;}
+                    if(seq == 63){
+                          seq = 0;
+                    } else{  
+                         seq++;
+                    }
 
                     seq_mapa++;
                 }
                 else{
                     // recebeu seq errada
+                    // printf("aqui\n");
                     Enviar_p_servidor(socket, NACK, seq);   
                     slide = 0;
                 }
                 
                 DATA:
-                n = recv(socket, pacote, 35,0);  // espera o próximo pacote
+                while (1) {
+                    n = recvfrom(socket, pacote, 35, 0, (struct sockaddr *)&sll, &sll_len);
+                    if (n <= 0) break;
+                    if (sll.sll_pkttype == PACKET_OUTGOING) continue;
+                    if (n >= 35 && pacote[0] == MARCA_INICIO) {
+                        int tipo_pacote = pacote[2] & 0b11111;
+                        if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO || 
+                            tipo_pacote == ESQUERDA || tipo_pacote == DIREITA || tipo_pacote == 0 || tipo_pacote == 1) {
+                            fflush(stdout);
+                            usleep(10000);
+                            continue; 
+                        }
+                    }
+                    break;
+                }
 
                 while((msg = desmontar_msg(pacote)) == NULL || n <= 0){
                     // erro na desmontagem da msg
+                    // printf("ali\n");
                     Enviar_p_servidor(socket, NACK, seq);   
-                    n = recv(socket, pacote, 35,0);
+                    while (1) {
+                        n = recvfrom(socket, pacote, 35, 0, (struct sockaddr *)&sll, &sll_len);
+                        if (n <= 0) break;
+                        if (sll.sll_pkttype == PACKET_OUTGOING) continue;
+                        if (n >= 35 && pacote[0] == MARCA_INICIO) {
+                            int tipo_pacote = pacote[2] & 0b11111;
+                            if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO || 
+                                tipo_pacote == ESQUERDA || tipo_pacote == DIREITA || tipo_pacote == 0 || tipo_pacote == 1) {
+                                fflush(stdout);
+                                usleep(10000);
+                                continue; 
+                            }
+                        }
+                        break;
+                    }
                     slide = 0;  // reseta a janela
                 }
 
@@ -351,6 +402,7 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
                         goto DATA;
                     }
                     else{
+                        // printf("talvez aqui\n");
                         if(seq == 0){
                             Enviar_p_servidor(socket, NACK, 63);
                         }
@@ -363,6 +415,7 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
                 else if(msg->tipo == GAME_CLEAR){   goto GC;}
                 else if(msg->tipo == GAME_OVER){    goto GO;}
             }while(msg->tipo != FIM_TRANSMISSAO);
+            // printf("fim vizualização\n");
             break;
 //-------------------------------------------------------------------------------------
         case TXT: //txt
@@ -371,7 +424,7 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
             if(txt == 0){   arquivo = fopen("TEXTO_1.txt", "wb");}
             else{   arquivo = fopen("TEXTO_2.txt", "wb");}
 
-            txt++;
+            txt = !txt;
 
             if(!arquivo){
                 perror("ERROR: erro ao abrir o arquivo txt\n");
@@ -398,12 +451,40 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
                 }
 
                 TEXT:
-                n = recv(socket, pacote, 35,0);  // espera o próximo pacote
+                while (1) {
+                    n = recvfrom(socket, pacote, 35, 0, (struct sockaddr *)&sll, &sll_len);
+                    if (n <= 0) break;
+                    if (sll.sll_pkttype == PACKET_OUTGOING) continue;
+                    if (n >= 35 && pacote[0] == MARCA_INICIO) {
+                        int tipo_pacote = pacote[2] & 0b11111;
+                        if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO || 
+                            tipo_pacote == ESQUERDA || tipo_pacote == DIREITA || tipo_pacote == 0 || tipo_pacote == 1) {
+                            fflush(stdout);
+                            usleep(10000);
+                            continue; 
+                        }
+                    }
+                    break;
+                }
              
                 while((msg = desmontar_msg(pacote)) == NULL || n <= 0){
                     // erro na desmontagem da msg
                     Enviar_p_servidor(socket, NACK, seq);   
-                    n = recv(socket, pacote, 35,0);
+                    while (1) {
+                        n = recvfrom(socket, pacote, 35, 0, (struct sockaddr *)&sll, &sll_len);
+                        if (n <= 0) break;
+                        if (sll.sll_pkttype == PACKET_OUTGOING) continue;
+                        if (n >= 35 && pacote[0] == MARCA_INICIO) {
+                            int tipo_pacote = pacote[2] & 0b11111;
+                            if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO || 
+                                tipo_pacote == ESQUERDA || tipo_pacote == DIREITA || tipo_pacote == 0 || tipo_pacote == 1) {
+                                fflush(stdout);
+                                usleep(10000);
+                                continue; 
+                            }
+                        }
+                        break;
+                    }
                     slide = 0;
                 }
 
@@ -432,8 +513,8 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
             // muda para receber dados
             fclose(arquivo);
             t1++;
-            if(txt == 0){   system("less TEXTO_2.jpg &");}
-            else{   system("less TEXTO_1.jpg &");}
+            if(txt == 0){   system("less TEXTO_2.txt &");}
+            else{   system("less TEXTO_1.txt &");}
             goto DATA;            
 //-------------------------------------------------------------------------------------
         case JPG: //jpg
@@ -442,7 +523,7 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
             if(jpg == 0){   imagem = fopen("IMAGEM_1.jpg", "wb");}
             else{   imagem = fopen("IMAGEM_2.jpg", "wb");}
 
-            jpg++;
+            jpg = !jpg;
 
             if(!imagem){
                 perror("ERROR: erro ao abrir o imagem jpg\n");
@@ -469,12 +550,40 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
                 }
 
                 IMAGE:
-                n = recv(socket, pacote, 35,0);  // espera o próximo pacote
+                while (1) {
+                    n = recvfrom(socket, pacote, 35, 0, (struct sockaddr *)&sll, &sll_len);
+                    if (n <= 0) break;
+                    if (sll.sll_pkttype == PACKET_OUTGOING) continue;
+                    if (n >= 35 && pacote[0] == MARCA_INICIO) {
+                        int tipo_pacote = pacote[2] & 0b11111;
+                        if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO || 
+                            tipo_pacote == ESQUERDA || tipo_pacote == DIREITA || tipo_pacote == 0 || tipo_pacote == 1) {
+                            fflush(stdout);
+                            usleep(10000);
+                            continue; 
+                        }
+                    }
+                    break;
+                }
              
                 while((msg = desmontar_msg(pacote)) == NULL || n <= 0){
                     // erro na desmontagem da msg
                     Enviar_p_servidor(socket, NACK, seq);   
-                    n = recv(socket, pacote, 35,0);
+                    while (1) {
+                        n = recvfrom(socket, pacote, 35, 0, (struct sockaddr *)&sll, &sll_len);
+                        if (n <= 0) break;
+                        if (sll.sll_pkttype == PACKET_OUTGOING) continue;
+                        if (n >= 35 && pacote[0] == MARCA_INICIO) {
+                            int tipo_pacote = pacote[2] & 0b11111;
+                            if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO || 
+                                tipo_pacote == ESQUERDA || tipo_pacote == DIREITA || tipo_pacote == 0 || tipo_pacote == 1) {
+                                fflush(stdout);
+                                usleep(10000);
+                                continue; 
+                            }
+                        }
+                        break;
+                    }
                     slide = 0;
                 }
 
@@ -510,10 +619,10 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
         case MP4: //mp4
             FILE *video;
 
-            if(mp4 == 0){   video = fopen("VIDEO_1.jpg", "wb");}
-            else{   video = fopen("VIDEO_2.jpg", "wb");}
+            if(mp4 == 0){   video = fopen("VIDEO_1.mp4", "wb");}
+            else{   video = fopen("VIDEO_2.mp4", "wb");}
 
-            mp4++;
+            mp4 = !mp4;
 
             if(!video){
                 perror("ERROR: erro ao abrir o video mp4\n");
@@ -525,8 +634,8 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
                     // muda para receber dados
                     seq = 0;
                     fclose(video);
-                    if(mp4 == 0){   system("mpv VIDEO_2.jpg &");}
-                    else{   system("mpv VIDEO_1.jpg &");}
+                    if(mp4 == 0){   system("mpv VIDEO_2.mp4 &");}
+                    else{   system("mpv VIDEO_1.mp4 &");}
                     goto DATA;
                 }
 
@@ -549,12 +658,40 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
                 }
 
                 VIDEO:
-                n = recv(socket, pacote, 35,0);  // espera o próximo pacote
+                while (1) {
+                    n = recvfrom(socket, pacote, 35, 0, (struct sockaddr *)&sll, &sll_len);
+                    if (n <= 0) break;
+                    if (sll.sll_pkttype == PACKET_OUTGOING) continue;
+                    if (n >= 35 && pacote[0] == MARCA_INICIO) {
+                        int tipo_pacote = pacote[2] & 0b11111;
+                        if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO || 
+                            tipo_pacote == ESQUERDA || tipo_pacote == DIREITA || tipo_pacote == 0 || tipo_pacote == 1) {
+                            fflush(stdout);
+                            usleep(10000);
+                            continue; 
+                        }
+                    }
+                    break;
+                }
              
                 while((msg = desmontar_msg(pacote)) == NULL || n <= 0){
                     // erro na desmontagem da msg
                     Enviar_p_servidor(socket, NACK, seq);   
-                    n = recv(socket, pacote, 35,0);
+                    while (1) {
+                        n = recvfrom(socket, pacote, 35, 0, (struct sockaddr *)&sll, &sll_len);
+                        if (n <= 0) break;
+                        if (sll.sll_pkttype == PACKET_OUTGOING) continue;
+                        if (n >= 35 && pacote[0] == MARCA_INICIO) {
+                            int tipo_pacote = pacote[2] & 0b11111;
+                            if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO || 
+                                tipo_pacote == ESQUERDA || tipo_pacote == DIREITA || tipo_pacote == 0 || tipo_pacote == 1) {
+                                fflush(stdout);
+                                usleep(10000);
+                                continue; 
+                            }
+                        }
+                        break;
+                    }
                     slide = 0;
                 }
 
@@ -583,8 +720,8 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
             // muda para receber dados
             fclose(video);
             t3++;
-            if(mp4 == 0){   system("mpv VIDEO_2.jpg &");}
-            else{   system("mpv VIDEO_1.jpg &");}
+            if(mp4 == 0){   system("mpv VIDEO_2.mp4 &");}
+            else{   system("mpv VIDEO_1.mp4 &");}
             goto DATA;
 //-------------------------------------------------------------------------------------
         case GAME_CLEAR:

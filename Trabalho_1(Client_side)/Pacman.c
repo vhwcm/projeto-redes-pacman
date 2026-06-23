@@ -261,11 +261,46 @@ void game_info(int x, int y, int t1, int t2, int t3, int life){
     attroff(COLOR_PAIR(2)|A_BOLD);
 }
 
-void pacman_game(int lines, int cols, int socket) {
-    int  light = 1, counter = 0;;    // luz do pacman
+void print_game_map_raw(char game_map[MAP_SIZE * MAP_SIZE]) {
+    for (int j = 0; j < MAP_SIZE + 2; j++) {
+        printf("#");
+    }
+    printf("\n");
+    for (int i = 0; i < MAP_SIZE; i++) {
+        printf("#");
+        for (int j = 0; j < MAP_SIZE; j++) {
+            char c = game_map[i * MAP_SIZE + j];
+            if (c == '0') {
+                printf(" ");
+            } else if (c == 'X') {
+                printf("#");
+            } else if (c == 'R') {
+                printf("%sR%s", ANSI_COLOR_RED, ANSI_COLOR_RESET);
+            } else if (c == 'G') {
+                printf("%sG%s", ANSI_COLOR_GREEN, ANSI_COLOR_RESET);
+            } else if (c == 'B') {
+                printf("%sB%s", ANSI_COLOR_BLUE, ANSI_COLOR_RESET);
+            } else if (c == 'Y') {
+                printf("%sY%s", ANSI_COLOR_YELLOW, ANSI_COLOR_RESET);
+            } else if (c == 'P') {
+                printf("%sP%s", ANSI_COLOR_YELLOW, ANSI_COLOR_RESET);
+            } else {
+                printf("%c", c);
+            }
+        }
+        printf("#\n");
+    }
+    for (int j = 0; j < MAP_SIZE + 2; j++) {
+        printf("#");
+    }
+    printf("\n");
+    fflush(stdout);
+}
 
-    int x = lines / 2;
-    int y = cols / 2;  
+void pacman_game(int lines, int cols, int socket) {
+    (void)lines;
+    (void)cols;
+    int  light = 1, counter = 0;
 
     init_pair(1, COLOR_RED,    COLOR_BLACK);    // enemy info
     init_pair(2, 226, COLOR_BLACK);             // pacman and enemy info
@@ -290,8 +325,7 @@ void pacman_game(int lines, int cols, int socket) {
         printf("======================================================\n");
     }while(Receber_d_servidor(socket, game_map) <= 0);
 
-    int pacman_x = 0, pacman_y = 0;
-// receber o dado necessario para o jogo (life do pacman)
+    // receber o dado necessario para o jogo (life do pacman)
 /*
     do{
         Enviar_p_servidor(socket, VIDA_PACMAN, 0);
@@ -301,85 +335,7 @@ void pacman_game(int lines, int cols, int socket) {
     int ch, n = 1;
 
     while(1){
-        // quadro de info
-        game_info(x, y, t1, t2, t3, pacman_life);
-
-        // desenha o quadro do jogo
-        attron(COLOR_PAIR(9));
-        mvprintw(x - 21, y + 20, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
-        mvprintw(x + 20, y + 20, "VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV");
-
-        for(int i = 0; i < MAP_SIZE; i++) {
-            mvprintw(x - 20 + i, y + 20, "{");
-            mvprintw(x - 20 + i, y + 61, "}");
-        }
-        attroff(COLOR_PAIR(9));
-
-        // desenha parte visivel do pacman
-        for(int i = 0; i < MAP_SIZE; i++){
-            for(int j = 0; j < MAP_SIZE; j++){
-                if(game_map[i * MAP_SIZE + j] == 'P'){
-                    // atualiza a posição do pacman
-                    pacman_x = i;
-                    pacman_y = j;
-            
-                    goto fim;
-                }
-            }
-        }
-        fim:
-
-        for(int i = light * (-1); i <= light; i++){
-            for(int j = light * (-1); j <= light; j++){
-                if(x - 20 + pacman_x + i >= x - 20 && y + 21 + pacman_y + j >= y +21 &&
-                x - 20 + pacman_x + i < x + 20 && y + 21 + pacman_y + j < y + 61){
-                    if(game_map[(pacman_x + i) * MAP_SIZE + pacman_y + j] == 'X'){    // desenha as paredes
-                        attron(COLOR_PAIR(9));
-                        mvaddch(x - 20 + pacman_x + i, y + 21 + pacman_y + j, 'A');
-                        attroff(COLOR_PAIR(9));
-                    }
-                    // desenha outros personagens do jogo
-                    else if(game_map[(pacman_x + i) * MAP_SIZE + pacman_y + j] == 'C'){   // desenha o pacman
-                        attron(COLOR_PAIR(5)|A_BOLD);
-                        mvaddch(x - 20 + pacman_x + i, y + 21 + pacman_y + j, 'C');
-                        attroff(COLOR_PAIR(5)|A_BOLD);
-                    }
-                    else if(game_map[(pacman_x + i) * MAP_SIZE +pacman_y + j] == 'G'){   // desenha os F_GREEN
-                        attron(COLOR_PAIR(7)|A_BOLD);
-                        mvaddch(x - 20 + pacman_x + i, y + 21 + pacman_y + j, 'A');
-                        attroff(COLOR_PAIR(7)|A_BOLD);
-                    }
-                    else if(game_map[(pacman_x + i) * MAP_SIZE + pacman_y + j] == 'R'){   // desenha os F_RED
-                        attron(COLOR_PAIR(6)|A_BOLD);
-                        mvaddch(x - 20 + pacman_x + i, y + 21 + pacman_y + j, 'A');
-                        attroff(COLOR_PAIR(6)|A_BOLD);
-                    }
-                    else if(game_map[(pacman_x + i) + MAP_SIZE + pacman_y + j] == 'B'){   // desenha os F_BLUE
-                        attron(COLOR_PAIR(8)|A_BOLD);
-                        mvaddch(x - 20 + pacman_x + i, y + 21 + pacman_y + j, 'A');
-                        attroff(COLOR_PAIR(8)|A_BOLD);
-                    }
-                    else if(game_map[(pacman_x + i) * MAP_SIZE + pacman_y + j] == 'Y'){   // desenha os F_YELLOW
-                        attron(COLOR_PAIR(5)|A_BOLD);
-                        mvaddch(x - 20 + pacman_x + i, y + 21 + pacman_y + j, 'A');
-                        attroff(COLOR_PAIR(5)|A_BOLD);
-                    }
-                    else if(game_map[(pacman_x + i) * MAP_SIZE + pacman_y + j] == 'T'){   // desenha os tesouros
-                        attron(COLOR_PAIR(5)|A_BOLD);
-                        mvaddch(x - 20 + pacman_x + i, y + 21 + pacman_y + j, '#');
-                        attroff(COLOR_PAIR(5)|A_BOLD);
-                    }
-                    else{                                                   // desenha o espaço vazio vizivel
-                        attron(COLOR_PAIR(10));
-                        mvaddch(x - 20 + pacman_x + i, y + 21 + pacman_y + j, ' ');
-                        attroff(COLOR_PAIR(10));
-                    }
-                }
-            }
-        }
-
-        mvprintw(x*2, y*2, " ");
-        refresh();
+        print_game_map_raw(game_map);
         keypad(stdscr, TRUE);
         flushinp();
         ch = my_getch();
