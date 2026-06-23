@@ -152,7 +152,7 @@ int main(int argc, char *argv[])
 
                 switch (tipo)
                 {
-                case 2:
+                case 3:
                     meu_log("vizualização recebida");
                     enviarVisualizacao(soquete, gameState->labirinto);
                     break;
