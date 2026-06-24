@@ -23,6 +23,11 @@ int main(int argc, char const *argv[]){
         log_print("Uso: %s <Nome_Cliente> [--debug]\n", argv[0]);
         return 0;
     }
+    int use_sock_raw = 0;
+    if (argc > 1 && strcmp(argv[argc-1], "--raw") == 0) {
+        use_sock_raw = 1;
+        argc--;
+    }
     
     if(argc >= 3 && strcmp(argv[argc-1], "--debug") == 0) {
         debug_mode = 1;
@@ -31,7 +36,7 @@ int main(int argc, char const *argv[]){
     const char *Nome_Client = argv[1];
 
     unsigned int socket;
-    if(!(socket = cria_raw_socket(Nome_Client))){
+    if(!(socket = cria_raw_socket(Nome_Client, use_sock_raw))){
         log_print("ERRO: cria_raw_socket\n");
         return 0;
     }

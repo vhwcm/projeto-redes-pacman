@@ -26,7 +26,7 @@ void init_log(const char *filename);
 void log_print(const char *format, ...);
 
 Mensagem *criaMensagem();
-int cria_raw_socket(char *nome_interface_rede);
+int cria_raw_socket(char *nome_interface_rede, int use_sock_raw);
 uint8_t calcula_crc8(const uint8_t *dados, int tamanho);
 int verifica_crc8(const uint8_t *dados, int tamanho, uint8_t crc_recebido);
 void printaMensagem(Mensagem *mensagem);

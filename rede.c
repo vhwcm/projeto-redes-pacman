@@ -112,8 +112,9 @@ int desmontaMensagem(const char *mensagem, Mensagem *protocolo)
     return 1;
 }
 
-int cria_raw_socket(char* nome_interface_rede) {
-    int soquete = socket(AF_PACKET, SOCK_DGRAM, htons(ETH_P_ALL));
+int cria_raw_socket(char* nome_interface_rede, int use_sock_raw) {
+    int tipo_socket = use_sock_raw ? SOCK_RAW : SOCK_DGRAM;
+    int soquete = socket(AF_PACKET, tipo_socket, htons(ETH_P_ALL));
     if (soquete == -1) {
         fprintf(stderr, "Erro ao criar socket: Verifique se você é root!\n");
         exit(-1);

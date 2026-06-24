@@ -44,6 +44,12 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    int use_sock_raw = 0;
+    if (argc > 1 && strcmp(argv[argc-1], "--raw") == 0) {
+        use_sock_raw = 1;
+        argc--;
+    }
+
     char *nome_rede = argv[1];
 
     if (strcmp(nome_rede, "lo") == 0) {
@@ -81,7 +87,7 @@ int main(int argc, char *argv[])
     for (int i = 0; i < 2048; i++) {
         buffer[i] = 0;
     }
-    unsigned int soquete = cria_raw_socket(nome_rede);
+    unsigned int soquete = cria_raw_socket(nome_rede, use_sock_raw);
 
     struct timeval tv;
     tv.tv_sec  = 0;
