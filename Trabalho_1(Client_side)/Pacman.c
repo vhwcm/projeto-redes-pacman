@@ -38,22 +38,22 @@ static const char* get_color(int id) {
 static void attron(int attr) {
     int color_id = attr & 0xFF;
     int is_bold = (attr & A_BOLD) != 0;
-    if (is_bold) printf("\x1b[1m");
-    printf("%s", get_color(color_id));
+    if (is_bold) log_print("\x1b[1m");
+    log_print("%s", get_color(color_id));
 }
 
 static void attroff(int attr) {
     (void)attr;
-    printf("\x1b[0m");
+    log_print("\x1b[0m");
 }
 
-#define mvprintw(r, c, fmt, ...) printf("\x1b[%d;%dH" fmt, (r)+1, (c)+1, ##__VA_ARGS__)
-#define mvaddch(r, c, ch) printf("\x1b[%d;%dH%c", (r)+1, (c)+1, ch)
-#define printw(...) printf(__VA_ARGS__)
+#define mvprintw(r, c, fmt, ...) log_print("\x1b[%d;%dH" fmt, (r)+1, (c)+1, ##__VA_ARGS__)
+#define mvaddch(r, c, ch) log_print("\x1b[%d;%dH%c", (r)+1, (c)+1, ch)
+#define printw(...) log_print(__VA_ARGS__)
 #define refresh() fflush(stdout)
 
 void clear_screen(void) {
-    printf("\033[H\033[2J");
+    log_print("\033[H\033[2J");
     fflush(stdout);
 }
 
@@ -263,37 +263,37 @@ void game_info(int x, int y, int t1, int t2, int t3, int life){
 
 void print_game_map_raw(char game_map[MAP_SIZE * MAP_SIZE]) {
     for (int j = 0; j < MAP_SIZE + 2; j++) {
-        printf("#");
+        log_print("#");
     }
-    printf("\n");
+    log_print("\n");
     for (int i = 0; i < MAP_SIZE; i++) {
-        printf("#");
+        log_print("#");
         for (int j = 0; j < MAP_SIZE; j++) {
             char c = game_map[i * MAP_SIZE + j];
             if (c == '0') {
-                printf(" ");
+                log_print(" ");
             } else if (c == 'X') {
-                printf("#");
+                log_print("#");
             } else if (c == 'R') {
-                printf("%sR%s", ANSI_COLOR_RED, ANSI_COLOR_RESET);
+                log_print("%sR%s", ANSI_COLOR_RED, ANSI_COLOR_RESET);
             } else if (c == 'G') {
-                printf("%sG%s", ANSI_COLOR_GREEN, ANSI_COLOR_RESET);
+                log_print("%sG%s", ANSI_COLOR_GREEN, ANSI_COLOR_RESET);
             } else if (c == 'B') {
-                printf("%sB%s", ANSI_COLOR_BLUE, ANSI_COLOR_RESET);
+                log_print("%sB%s", ANSI_COLOR_BLUE, ANSI_COLOR_RESET);
             } else if (c == 'Y') {
-                printf("%sY%s", ANSI_COLOR_YELLOW, ANSI_COLOR_RESET);
+                log_print("%sY%s", ANSI_COLOR_YELLOW, ANSI_COLOR_RESET);
             } else if (c == 'P') {
-                printf("%sP%s", ANSI_COLOR_YELLOW, ANSI_COLOR_RESET);
+                log_print("%sP%s", ANSI_COLOR_YELLOW, ANSI_COLOR_RESET);
             } else {
-                printf("%c", c);
+                log_print("%c", c);
             }
         }
-        printf("#\n");
+        log_print("#\n");
     }
     for (int j = 0; j < MAP_SIZE + 2; j++) {
-        printf("#");
+        log_print("#");
     }
-    printf("\n");
+    log_print("\n");
     fflush(stdout);
 }
 
@@ -322,8 +322,12 @@ void pacman_game(int lines, int cols, int socket) {
     // receber o mapa do servidor 
     do{
         Enviar_p_servidor(socket, INICIALIZACAO, 0);
-        printf("======================================================\n");
+        log_print("======================================================\n");
     }while(Receber_d_servidor(socket, game_map) <= 0);
+
+    log_print("fim da inicialização\n");
+    seq_send++; // Sincroniza a próxima mensagem de comando para a sequência 1
+
 
     // receber o dado necessario para o jogo (life do pacman)
 /*
@@ -345,39 +349,39 @@ void pacman_game(int lines, int cols, int socket) {
         switch(ch){
             case KEY_UP:
                 do{
-                    if(n <= 0)  seq_send--;
+                    log_print("Enviando movimento CIMA - Sequencia: %d\n", seq_send);
                     Enviar_p_servidor(socket, CIMA, seq_send);
-                    seq_send++;
                 }while((n = Receber_d_servidor(socket, game_map)) <= 0);
+                seq_send = (seq_send + 1) % 64;
                 break;
             case KEY_DOWN:
                 do{
-                    if(n <= 0) seq_send--;
+                    log_print("Enviando movimento BAIXO - Sequencia: %d\n", seq_send);
                     Enviar_p_servidor(socket, BAIXO, seq_send);
-                    seq_send++;
                 }while((n = Receber_d_servidor(socket, game_map)) <= 0);
+                seq_send = (seq_send + 1) % 64;
                 break;
             case KEY_LEFT:
                 do{
-                    if(n <= 0) seq_send--;
+                    log_print("Enviando movimento ESQUERDA - Sequencia: %d\n", seq_send);
                     Enviar_p_servidor(socket, ESQUERDA, seq_send);
-                    seq_send++;
                 }while((n = Receber_d_servidor(socket, game_map)) <= 0);
+                seq_send = (seq_send + 1) % 64;
                 break;
             case KEY_RIGHT:
                 do{
-                    if(n <= 0) seq_send--;
+                    log_print("Enviando movimento DIREITA - Sequencia: %d\n", seq_send);
                     Enviar_p_servidor(socket, DIREITA, seq_send);
-                    seq_send++;
                 }while((n = Receber_d_servidor(socket, game_map)) <= 0);
+                seq_send = (seq_send + 1) % 64;
                 break;
             case KEY_F(1):  
-                // avisar o servidor o fim do jogo e espera ACK
+                // avisar o servidor o fim da transmissão
                 do{
-                    if(n <= 0) seq_send--;
+                    log_print("Enviando FIM DE JOGO (q) - Sequencia: %d\n", seq_send);
                     Enviar_p_servidor(socket, FIM_TRANSMISSAO, seq_send);
-                    seq_send++;
                 }while((n = Receber_d_servidor(socket, game_map)) <= 0);
+                seq_send = (seq_send + 1) % 64;
                 return; // sair do jogo
         }
 

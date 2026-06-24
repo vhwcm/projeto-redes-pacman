@@ -17,8 +17,9 @@
 const int timeoutMillis = 200;
 
 int main(int argc, char const *argv[]){
+    init_log("client.log");
     if(argc < 2){
-        printf("Uso: %s <Nome_Cliente> não definido\n", argv[0]);
+        log_print("Uso: %s <Nome_Cliente> não definido\n", argv[0]);
         return 0;
     }
     
@@ -26,7 +27,7 @@ int main(int argc, char const *argv[]){
 
     unsigned int socket;
     if(!(socket = cria_raw_socket(Nome_Client))){
-        printf("ERRO: cria_raw_socket\n");
+        log_print("ERRO: cria_raw_socket\n");
         return 0;
     }
 

@@ -150,38 +150,38 @@ static int recebe_mensagem(int timeout_ms, uint8_t *tipo_out, uint8_t **dados_ou
 
 static void exibe_mapa(uint8_t *dados, uint32_t tam) {
     if (tam < (uint32_t)(MAP_SIZE * MAP_SIZE)) {
-        printf(RD "Mapa incompleto (%u bytes)\n" R, tam);
+        log_print(RD "Mapa incompleto (%u bytes)\n" R, tam);
         return;
     }
-    printf("\x1b[2J\x1b[H");
+    log_print("\x1b[2J\x1b[H");
     for (int i = 0; i < MAP_SIZE; i++) {
-        printf(" ");
+        log_print(" ");
         for (int j = 0; j < MAP_SIZE; j++) {
             char c = (char)dados[i * MAP_SIZE + j];
             switch (c) {
-                case 'X': printf(BD BG_W WH "  " R); break;
-                case 'P': printf(BD YL " C" R);       break;
-                case 'R': printf(BD RD " R" R);       break;
-                case 'G': printf(BD GR " G" R);       break;
-                case 'B': printf(BD BL " B" R);       break;
-                case 'Y': printf(BD YL " Y" R);       break;
+                case 'X': log_print(BD BG_W WH "  " R); break;
+                case 'P': log_print(BD YL " C" R);       break;
+                case 'R': log_print(BD RD " R" R);       break;
+                case 'G': log_print(BD GR " G" R);       break;
+                case 'B': log_print(BD BL " B" R);       break;
+                case 'Y': log_print(BD YL " Y" R);       break;
                 case '1': case '2':
                 case '3': case '4':
-                case '5': case '6': printf(BD YL " *" R); break;
-                default:  printf(GY "  " R);          break;
+                case '5': case '6': log_print(BD YL " *" R); break;
+                default:  log_print(GY "  " R);          break;
             }
         }
-        printf("\n");
+        log_print("\n");
     }
-    printf("\n");
-    printf(BD CY "  ╔══════════════════════════════════╗\n" R);
-    printf(BD CY "  ║       CONTROLES DO PACMAN        ║\n" R);
-    printf(BD CY "  ╠══════════════════════════════════╣\n" R);
-    printf(BD CY "  ║  " R BD WH "W" R CY " = Cima     " R BD WH "S" R CY " = Baixo     " BD CY "║\n" R);
-    printf(BD CY "  ║  " R BD WH "A" R CY " = Esquerda  " R BD WH "D" R CY " = Direita   " BD CY "║\n" R);
-    printf(BD CY "  ║  " R BD WH "Q" R CY " = Sair                      " BD CY "║\n" R);
-    printf(BD CY "  ╚══════════════════════════════════╝\n" R);
-    printf("\n" BD "> " R);
+    log_print("\n");
+    log_print(BD CY "  ╔══════════════════════════════════╗\n" R);
+    log_print(BD CY "  ║       CONTROLES DO PACMAN        ║\n" R);
+    log_print(BD CY "  ╠══════════════════════════════════╣\n" R);
+    log_print(BD CY "  ║  " R BD WH "W" R CY " = Cima     " R BD WH "S" R CY " = Baixo     " BD CY "║\n" R);
+    log_print(BD CY "  ║  " R BD WH "A" R CY " = Esquerda  " R BD WH "D" R CY " = Direita   " BD CY "║\n" R);
+    log_print(BD CY "  ║  " R BD WH "Q" R CY " = Sair                      " BD CY "║\n" R);
+    log_print(BD CY "  ╚══════════════════════════════════╝\n" R);
+    log_print("\n" BD "> " R);
     fflush(stdout);
 }
 
@@ -193,7 +193,7 @@ static void exibe_txt(uint8_t *dados, uint32_t tam) {
     fclose(f);
 
     term_restore();
-    printf(BD YL "\n╔═══════════════════════╗\n║  🏆 PASTILHA TXT!  ║\n╚═══════════════════════╝\n" R);
+    log_print(BD YL "\n╔═══════════════════════╗\n║  🏆 PASTILHA TXT!  ║\n╚═══════════════════════╝\n" R);
     fflush(stdout);
     char cmd[256];
     snprintf(cmd, sizeof(cmd), "less '%s'", tmp);
@@ -208,18 +208,18 @@ static void exibe_jpg(uint8_t *dados, uint32_t tam) {
     fwrite(dados, 1, tam, f);
     fclose(f);
 
-    printf(BD YL "\n╔═══════════════════════╗\n║  🏆 PASTILHA JPG!  ║\n╚═══════════════════════╝\n" R);
+    log_print(BD YL "\n╔═══════════════════════╗\n║  🏆 PASTILHA JPG!  ║\n╚═══════════════════════╝\n" R);
     fflush(stdout);
 
     char cmd[256];
     if (system("which feh > /dev/null 2>&1") == 0)
-        snprintf(cmd, sizeof(cmd), "feh '%s' &", tmp);
+        snprintf(cmd, sizeof(cmd), "feh '%s' > /dev/null 2>&1 &", tmp);
     else if (system("which eog > /dev/null 2>&1") == 0)
-        snprintf(cmd, sizeof(cmd), "eog '%s' &", tmp);
+        snprintf(cmd, sizeof(cmd), "eog '%s' > /dev/null 2>&1 &", tmp);
     else if (system("which display > /dev/null 2>&1") == 0)
-        snprintf(cmd, sizeof(cmd), "display '%s' &", tmp);
+        snprintf(cmd, sizeof(cmd), "display '%s' > /dev/null 2>&1 &", tmp);
     else {
-        printf(WH "Imagem salva em: %s\n" R, tmp);
+        log_print(WH "Imagem salva em: %s\n" R, tmp);
         return;
     }
     system(cmd);
@@ -232,15 +232,15 @@ static void exibe_mp4(uint8_t *dados, uint32_t tam) {
     fwrite(dados, 1, tam, f);
     fclose(f);
 
-    printf(BD YL "\n╔═══════════════════════╗\n║  🏆 PASTILHA MP4!  ║\n╚═══════════════════════╝\n" R);
-    printf("[DIAG] Bytes recebidos: %u\n", tam);
+    log_print(BD YL "\n╔═══════════════════════╗\n║  🏆 PASTILHA MP4!  ║\n╚═══════════════════════╝\n" R);
+    log_print("[DIAG] Bytes recebidos: %u\n", tam);
     {
         FILE *orig = fopen("naruto_video.mp4", "rb");
         if (orig) {
             fseek(orig, 0, SEEK_END);
             long orig_sz = ftell(orig);
             fclose(orig);
-            printf("[DIAG] Tamanho original: %ld bytes — %s\n", orig_sz,
+            log_print("[DIAG] Tamanho original: %ld bytes — %s\n", orig_sz,
                    (long)tam == orig_sz ? "OK (sem perda)" : "DIVERGENTE (perda de pacotes!)");
         }
     }
@@ -248,11 +248,11 @@ static void exibe_mp4(uint8_t *dados, uint32_t tam) {
 
     char cmd[256];
     if (system("which mpv > /dev/null 2>&1") == 0)
-        snprintf(cmd, sizeof(cmd), "mpv '%s' &", tmp);
+        snprintf(cmd, sizeof(cmd), "mpv '%s' > /dev/null 2>&1 &", tmp);
     else if (system("which vlc > /dev/null 2>&1") == 0)
-        snprintf(cmd, sizeof(cmd), "vlc '%s' &", tmp);
+        snprintf(cmd, sizeof(cmd), "vlc '%s' > /dev/null 2>&1 &", tmp);
     else {
-        printf(WH "Vídeo salvo em: %s\n" R, tmp);
+        log_print(WH "Vídeo salvo em: %s\n" R, tmp);
         return;
     }
     system(cmd);
@@ -266,12 +266,12 @@ static int processa(uint8_t tipo, uint8_t *dados, uint32_t tam) {
         case 7:  exibe_mp4(dados, tam);  return 0;
         case 9:
             term_restore();
-            printf(BD GR "\n╔══════════════════════════╗\n║    🎉 VOCÊ VENCEU! 🎉    ║\n╚══════════════════════════╝\n" R "\n");
+            log_print(BD GR "\n╔══════════════════════════╗\n║    🎉 VOCÊ VENCEU! 🎉    ║\n╚══════════════════════════╝\n" R "\n");
             fflush(stdout);
             return -1;
         case 14:
             term_restore();
-            printf(BD RD "\n╔══════════════════════╗\n║     GAME OVER! 💀    ║\n╚══════════════════════╝\n" R "\n");
+            log_print(BD RD "\n╔══════════════════════╗\n║     GAME OVER! 💀    ║\n╚══════════════════════╝\n" R "\n");
             fflush(stdout);
             return -1;
         default:

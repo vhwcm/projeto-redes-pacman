@@ -46,4 +46,7 @@ void Enviar_p_servidor(int socket, uint8_t tipo, uint8_t sequencia);
 
 int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]);
 
+void init_log(const char *filename);
+void log_print(const char *format, ...);
+
 #endif

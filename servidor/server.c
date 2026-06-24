@@ -39,7 +39,7 @@ int main(int argc, char *argv[])
 {
     if (argc < 2)
     {
-        printf("Uso: %s <nome_rede> [arquivo_labirinto]\n", argv[0]);
+        log_print("Uso: %s <nome_rede> [arquivo_labirinto]\n", argv[0]);
         return 1;
     }
 
@@ -51,7 +51,7 @@ int main(int argc, char *argv[])
 
     GameState *gameState = criaGameState();
     if (gameState == NULL) {
-        printf("Erro ao criar GameState\n");
+        log_print("Erro ao criar GameState\n");
         return 1;
     }
 
@@ -60,7 +60,7 @@ int main(int argc, char *argv[])
         FILE *arquivoCSV = fopen(argv[2], "r");
         if (arquivoCSV == NULL)
         {
-            printf("Erro ao abrir arquivo\n");
+            log_print("Erro ao abrir arquivo\n");
             return 1;
         }
         carregaLabirinto(arquivoCSV, gameState->labirinto, gameState);
@@ -69,11 +69,11 @@ int main(int argc, char *argv[])
     else if (argc == 2)
     {
         printa_labirinto(gameState->labirinto);
-        printf("recebendo\n");
+        log_print("recebendo\n");
     }
     else
     {
-        printf("Uso: %s <nome_rede> [arquivo_labirinto]\n", argv[0]);
+        log_print("Uso: %s <nome_rede> [arquivo_labirinto]\n", argv[0]);
         return 1;
     }
     unsigned char buffer[2048];
@@ -98,7 +98,7 @@ int main(int argc, char *argv[])
 
         long long agora = timestamp_ms();
         if (agora - ultimo_ack_ts >= ACK_TIMEOUT_MS && ack_counter > 0) {
-            printf("Timeout 200ms! Enviando AK cumulativo para seq %d\n", (expected_seq_recv + 63) % 64);
+            log_print("Timeout 200ms! Enviando AK cumulativo para seq %d\n", (expected_seq_recv + 63) % 64);
             enviarAK((expected_seq_recv + 63) % 64, soquete);
             ack_counter = 0;
             ultimo_ack_ts = agora;
@@ -130,7 +130,7 @@ int main(int argc, char *argv[])
 
             // ACKs e NAKs (mensagens de controle)
             if (tipo == 0 || tipo == 1) {
-                printf("Recebido %s para sequencia %d\n", tipo == 0 ? "AK" : "NAK", mensagemCliente->num_sequencia);
+                log_print("Recebido %s para sequencia %d\n", tipo == 0 ? "AK" : "NAK", mensagemCliente->num_sequencia);
                 if (mensagemCliente->dados) free(mensagemCliente->dados);
                 free(mensagemCliente);
                 continue;
@@ -138,13 +138,13 @@ int main(int argc, char *argv[])
 
             // Lógica de Sequencialização para mensagens de DADOS do cliente
             if (mensagemCliente->num_sequencia == expected_seq_recv) {
-                printf("Mensagem recebida na sequencia correta: %d\n", expected_seq_recv);
+                log_print("Mensagem recebida na sequencia correta: %d\n", expected_seq_recv);
                 expected_seq_recv = (expected_seq_recv + 1) % 64;
                 ack_counter++;
                 ultimo_ack_ts = timestamp_ms();
 
                 if (ack_counter >= 4) {
-                    printf("Enviando AK (cumulativo) para sequencia %d\n", (expected_seq_recv + 63) % 64);
+                    log_print("Enviando AK (cumulativo) para sequencia %d\n", (expected_seq_recv + 63) % 64);
                     enviarAK((expected_seq_recv + 63) % 64, soquete);
                     ack_counter = 0;
                     ultimo_ack_ts = timestamp_ms();
@@ -169,7 +169,7 @@ int main(int argc, char *argv[])
                     break;
                 }
             } else {
-                printf("Erro de sequencia! Esperado: %d, Recebido: %d. Enviando NAK.\n", 
+                log_print("Erro de sequencia! Esperado: %d, Recebido: %d. Enviando NAK.\n", 
                        expected_seq_recv, mensagemCliente->num_sequencia);
                 enviarNAK(expected_seq_recv, soquete);
             }
@@ -206,7 +206,7 @@ void enviarArquivo(int soquete, const char *caminho, uint8_t tipo)
 {
     FILE *f = fopen(caminho, "rb");
     if (!f) {
-        printf("Erro ao abrir arquivo: %s\n", caminho);
+        log_print("Erro ao abrir arquivo: %s\n", caminho);
         return;
     }
 
@@ -228,7 +228,7 @@ void enviarArquivo(int soquete, const char *caminho, uint8_t tipo)
     msg->tamanho = (uint32_t)tamanho;
     msg->dados   = dados;
 
-    printf("Enviando arquivo %s (%ld bytes) tipo=%d\n", caminho, tamanho, tipo);
+    log_print("Enviando arquivo %s (%ld bytes) tipo=%d\n", caminho, tamanho, tipo);
     enviaMensagem(msg, soquete, &seq_server);
 
     free(dados);
@@ -237,7 +237,7 @@ void enviarArquivo(int soquete, const char *caminho, uint8_t tipo)
 
 void enviaGameOver(int soquete)
 {
-    printf("GAME OVER! Enviando tipo=14\n");
+    log_print("GAME OVER! Enviando tipo=14\n");
     Mensagem *msg = criaMensagem();
     msg->tipo    = 14;
     msg->tamanho = 0;
@@ -289,17 +289,17 @@ void movimentaPacMan(int soquete, int tipo, char labirinto[MAP_SIZE][MAP_SIZE], 
     int novaPosY  = posYAtual;
 
     switch (tipo) {
-        case 10: novaPosY = posYAtual + 1; printf("Movendo para DIREITA\n");   break;
-        case 11: novaPosY = posYAtual - 1; printf("Movendo para ESQUERDA\n");  break;
-        case 12: novaPosX = posXAtual - 1; printf("Movendo para CIMA\n");      break;
-        case 13: novaPosX = posXAtual + 1; printf("Movendo para BAIXO\n");     break;
+        case 10: novaPosY = posYAtual + 1; log_print("Movendo para DIREITA\n");   break;
+        case 11: novaPosY = posYAtual - 1; log_print("Movendo para ESQUERDA\n");  break;
+        case 12: novaPosX = posXAtual - 1; log_print("Movendo para CIMA\n");      break;
+        case 13: novaPosX = posXAtual + 1; log_print("Movendo para BAIXO\n");     break;
     }
 
     char elem = realizaMovimento(labirinto, novaPosX, novaPosY, gameState);
-    printf("Movimento PacMan: elem='%c'\n", elem);
+    log_print("Movimento PacMan: elem='%c'\n", elem);
 
     if (elem == 'R' || elem == 'G' || elem == 'B' || elem == 'Y') {
-        printf("💥 PACMAN COLIDIU COM FANTASMA '%c'!\n", elem);
+        log_print("💥 PACMAN COLIDIU COM FANTASMA '%c'!\n", elem);
         enviaGameOver(soquete);
         usleep(100000);
         exit(0);
@@ -307,13 +307,13 @@ void movimentaPacMan(int soquete, int tipo, char labirinto[MAP_SIZE][MAP_SIZE], 
 
     switch (elem) {
         case '1': case '2': 
-            printf("✨ PACMAN PEGOU PASTILHA TXT!\n");
+            log_print("✨ PACMAN PEGOU PASTILHA TXT!\n");
             enviarArquivo(soquete, "livro.txt",          5); break;
         case '3': case '4': 
-            printf("✨ PACMAN PEGOU PASTILHA JPG!\n");
+            log_print("✨ PACMAN PEGOU PASTILHA JPG!\n");
             enviarArquivo(soquete, "naruto.jpg",          6); break;
         case '5': case '6': 
-            printf("✨ PACMAN PEGOU PASTILHA MP4!\n");
+            log_print("✨ PACMAN PEGOU PASTILHA MP4!\n");
             enviarArquivo(soquete, "naruto_video.mp4",    7); break;
         default: break;
     }
@@ -328,7 +328,7 @@ void movimentaPacMan(int soquete, int tipo, char labirinto[MAP_SIZE][MAP_SIZE], 
             }
         }
         if (artefatosRestantes == 0) {
-            printf("🎉 TODOS OS ARTEFATOS COLETADOS! ENVIANDO SUCESSO (TIPO=9)...\n");
+            log_print("🎉 TODOS OS ARTEFATOS COLETADOS! ENVIANDO SUCESSO (TIPO=9)...\n");
             Mensagem *msg_vitoria = criaMensagem();
             msg_vitoria->tipo    = 9;
             msg_vitoria->tamanho = 0;
@@ -404,13 +404,13 @@ void movimentaFantasmas(int soquete, char labirinto[MAP_SIZE][MAP_SIZE], GameSta
 
     prio[0] = (dir_r + 3) % 4; prio[1] = dir_r; prio[2] = (dir_r + 1) % 4; prio[3] = (dir_r + 2) % 4;
     if (movimentaUmFantasma(labirinto, 7, 'R', prio, &dir_r, gameState) == 'P') {
-        printf("FANTASMA 'R'\n");
+        log_print("FANTASMA 'R'\n");
         enviaGameOver(soquete); usleep(100000); exit(0);
     }
 
     prio[0] = (dir_b + 1) % 4; prio[1] = dir_b; prio[2] = (dir_b + 3) % 4; prio[3] = (dir_b + 2) % 4;
     if (movimentaUmFantasma(labirinto, 9, 'B', prio, &dir_b, gameState) == 'P') {
-        printf("FANTASMA 'B'\n");
+        log_print("FANTASMA 'B'\n");
         enviaGameOver(soquete);
         usleep(100000);
         exit(0);
@@ -423,7 +423,7 @@ void movimentaFantasmas(int soquete, char labirinto[MAP_SIZE][MAP_SIZE], GameSta
     }
     verde_toggle = !verde_toggle;
     if (movimentaUmFantasma(labirinto, 8, 'G', prio, &dir_g, gameState) == 'P') {
-        printf("FANTASMA 'G'\n");
+        log_print("FANTASMA 'G'\n");
         enviaGameOver(soquete); usleep(100000); exit(0);
     }
 
@@ -433,7 +433,7 @@ void movimentaFantasmas(int soquete, char labirinto[MAP_SIZE][MAP_SIZE], GameSta
         int tmp = shuffle[i]; shuffle[i] = shuffle[j]; shuffle[j] = tmp;
     }
     if (movimentaUmFantasma(labirinto, 10, 'Y', shuffle, &dir_y, gameState) == 'P') {
-        printf("FANTASMA 'Y'\n");
+        log_print("FANTASMA 'Y'\n");
         enviaGameOver(soquete); usleep(100000); exit(0);
     }
 }
@@ -441,6 +441,6 @@ void movimentaFantasmas(int soquete, char labirinto[MAP_SIZE][MAP_SIZE], GameSta
 /* A função leProtocoloMontaMensagem foi removida pois não é mais utilizada (substituída por desmontaMensagem) */
 
 void meu_log(char *mensagem) {
-    printf("%s\n", mensagem);
+    log_print("%s\n", mensagem);
 }
 
