@@ -73,7 +73,7 @@ int main(int argc, char *argv[])
     }
     else
     {
-        log_print("Uso: %s <nome_rede> [arquivo_labirinto]\n", argv[0]);
+        log_print("argumentos incorretos\n", argv[0]);
         return 1;
     }
     unsigned char buffer[2048];
@@ -98,16 +98,13 @@ int main(int argc, char *argv[])
 
         long long agora = timestamp_ms();
         if (agora - ultimo_ack_ts >= ACK_TIMEOUT_MS && ack_counter > 0) {
-            log_print("Timeout 200ms! Enviando AK cumulativo para seq %d\n", (expected_seq_recv + 63) % 64);
+            log_print("Timeout de 200ms. Enviando ACK para seq %d\n", (expected_seq_recv + 63) % 64);
             enviarAK((expected_seq_recv + 63) % 64, soquete);
             ack_counter = 0;
             ultimo_ack_ts = agora;
         }
 
         if (bytes <= 0)
-            continue;
-
-        if (modo_loopback && from.sll_pkttype == PACKET_OUTGOING)
             continue;
 
         Mensagem *mensagemCliente = criaMensagem();

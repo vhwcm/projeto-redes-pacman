@@ -38,22 +38,22 @@ static const char* get_color(int id) {
 static void attron(int attr) {
     int color_id = attr & 0xFF;
     int is_bold = (attr & A_BOLD) != 0;
-    if (is_bold) log_print("\x1b[1m");
-    log_print("%s", get_color(color_id));
+    if (is_bold) printf("\x1b[1m");
+    printf("%s", get_color(color_id));
 }
 
 static void attroff(int attr) {
     (void)attr;
-    log_print("\x1b[0m");
+    printf("\x1b[0m");
 }
 
-#define mvprintw(r, c, fmt, ...) log_print("\x1b[%d;%dH" fmt, (r)+1, (c)+1, ##__VA_ARGS__)
-#define mvaddch(r, c, ch) log_print("\x1b[%d;%dH%c", (r)+1, (c)+1, ch)
-#define printw(...) log_print(__VA_ARGS__)
+#define mvprintw(r, c, fmt, ...) printf("\x1b[%d;%dH" fmt, (r)+1, (c)+1, ##__VA_ARGS__)
+#define mvaddch(r, c, ch) printf("\x1b[%d;%dH%c", (r)+1, (c)+1, ch)
+#define printw(...) printf(__VA_ARGS__)
 #define refresh() fflush(stdout)
 
 void clear_screen(void) {
-    log_print("\033[H\033[2J");
+    printf("\033[H\033[2J");
     fflush(stdout);
 }
 
@@ -263,37 +263,37 @@ void game_info(int x, int y, int t1, int t2, int t3, int life){
 
 void print_game_map_raw(char game_map[MAP_SIZE * MAP_SIZE]) {
     for (int j = 0; j < MAP_SIZE + 2; j++) {
-        log_print("#");
+        printf("#");
     }
-    log_print("\n");
+    printf("\n");
     for (int i = 0; i < MAP_SIZE; i++) {
-        log_print("#");
+        printf("#");
         for (int j = 0; j < MAP_SIZE; j++) {
             char c = game_map[i * MAP_SIZE + j];
             if (c == '0') {
-                log_print(" ");
+                printf(" ");
             } else if (c == 'X') {
-                log_print("#");
+                printf("#");
             } else if (c == 'R') {
-                log_print("%sR%s", ANSI_COLOR_RED, ANSI_COLOR_RESET);
+                printf("%sR%s", ANSI_COLOR_RED, ANSI_COLOR_RESET);
             } else if (c == 'G') {
-                log_print("%sG%s", ANSI_COLOR_GREEN, ANSI_COLOR_RESET);
+                printf("%sG%s", ANSI_COLOR_GREEN, ANSI_COLOR_RESET);
             } else if (c == 'B') {
-                log_print("%sB%s", ANSI_COLOR_BLUE, ANSI_COLOR_RESET);
+                printf("%sB%s", ANSI_COLOR_BLUE, ANSI_COLOR_RESET);
             } else if (c == 'Y') {
-                log_print("%sY%s", ANSI_COLOR_YELLOW, ANSI_COLOR_RESET);
+                printf("%sY%s", ANSI_COLOR_YELLOW, ANSI_COLOR_RESET);
             } else if (c == 'P') {
-                log_print("%sP%s", ANSI_COLOR_YELLOW, ANSI_COLOR_RESET);
+                printf("%sP%s", ANSI_COLOR_YELLOW, ANSI_COLOR_RESET);
             } else {
-                log_print("%c", c);
+                printf("%c", c);
             }
         }
-        log_print("#\n");
+        printf("#\n");
     }
     for (int j = 0; j < MAP_SIZE + 2; j++) {
-        log_print("#");
+        printf("#");
     }
-    log_print("\n");
+    printf("\n");
     fflush(stdout);
 }
 
@@ -389,14 +389,12 @@ void pacman_game(int lines, int cols, int socket) {
         if(n == 2){ return;}
         else if(n == 9){
             //printar game clear na tela
-            print_gameclear(lines, cols);
             keypad(stdscr, TRUE);
             my_getch();
             break;
         }
         else if(n == 14){
             //printar game over na tela
-            print_gameover(lines, cols);
             keypad(stdscr, TRUE);
             my_getch();
             break;

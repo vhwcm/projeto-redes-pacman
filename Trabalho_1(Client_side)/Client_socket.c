@@ -22,11 +22,16 @@ void init_log(const char *filename) {
     log_file = fopen(filename, "w");
 }
 
+int debug_mode = 0;
+
 void log_print(const char *format, ...) {
     va_list args;
-    va_start(args, format);
-    vprintf(format, args);
-    va_end(args);
+    
+    if (debug_mode) {
+        va_start(args, format);
+        vprintf(format, args);
+        va_end(args);
+    }
 
     if (log_file) {
         va_start(args, format);
@@ -447,8 +452,14 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
                         goto DATA;
                     }
                 }
-                else if(msg->tipo == GAME_CLEAR){   goto GC;}
-                else if(msg->tipo == GAME_OVER){    goto GO;}
+                else if(msg->tipo == GAME_CLEAR){   
+                    Enviar_p_servidor(socket, ACK, msg->sequencia);
+                    goto GC;
+                }
+                else if(msg->tipo == GAME_OVER){    
+                    Enviar_p_servidor(socket, ACK, msg->sequencia);
+                    goto GO;
+                }
             } while(1);
             log_print("fim vizualização\n");
             break;
@@ -559,8 +570,14 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
             // muda para receber dados
             fclose(arquivo);
             t1++;
-            if(txt == 0){   system("less TEXTO_2.txt ");}
-            else{   system("less TEXTO_1.txt ");}
+            if(txt == 0){   
+                system("less TEXTO_2.txt ");
+                remove("TEXTO_2.txt");
+            }
+            else{   
+                system("less TEXTO_1.txt ");
+                remove("TEXTO_1.txt");
+            }
             goto DATA;            
 //-------------------------------------------------------------------------------------
         case JPG: //jpg
@@ -669,8 +686,14 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
             // muda para receber dados
             fclose(imagem);
             t2++;
-            if(jpg == 0){   system("feh IMAGEM_2.jpg > /dev/null 2>&1");}
-            else{   system("feh IMAGEM_1.jpg > /dev/null 2>&1");}
+            if(jpg == 0){   
+                system("feh IMAGEM_2.jpg > /dev/null 2>&1");
+                remove("IMAGEM_2.jpg");
+            }
+            else{   
+                system("feh IMAGEM_1.jpg > /dev/null 2>&1");
+                remove("IMAGEM_1.jpg");
+            }
             goto DATA;
 //-------------------------------------------------------------------------------------
         case MP4: //mp4
@@ -779,17 +802,25 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
             // muda para receber dados
             fclose(video);
             t3++;
-            if(mp4 == 0){   system("mpv VIDEO_2.mp4 > /dev/null 2>&1");}
-            else{   system("mpv VIDEO_1.mp4 > /dev/null 2>&1");}
+            if(mp4 == 0){   
+                system("mpv VIDEO_2.mp4 > /dev/null 2>&1");
+                remove("VIDEO_2.mp4");
+            }
+            else{   
+                system("mpv VIDEO_1.mp4 > /dev/null 2>&1");
+                remove("VIDEO_1.mp4");
+            }
             goto DATA;
 //-------------------------------------------------------------------------------------
         case GAME_CLEAR:
             GC:
+            Enviar_p_servidor(socket, ACK, msg->sequencia);
             printf("\n============ JOGO CONCLUIDO =====\n");
             return 9;
 //-------------------------------------------------------------------------------------
         case GAME_OVER:
             GO:
+            Enviar_p_servidor(socket, ACK, msg->sequencia);
             printf("\n====== GAME_OVER ======\n");
             return 14;
 //-------------------------------------------------------------------------------------
