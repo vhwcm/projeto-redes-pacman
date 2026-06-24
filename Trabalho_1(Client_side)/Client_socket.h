@@ -15,6 +15,7 @@
 #define TXT 0b00101             // 5
 #define JPG 0b00110             // 6
 #define MP4 0b00111             // 7
+#define FANTASMA 0b01000        // 8
 #define GAME_CLEAR 0b01001      // 9
 #define DIREITA 0b01010         // 10
 #define ESQUERDA 0b01011        // 11

@@ -296,7 +296,9 @@ void movimentaPacMan(int soquete, int tipo, char labirinto[MAP_SIZE][MAP_SIZE], 
     log_print("Movimento PacMan: elem='%c'\n", elem);
 
     if (elem == 'R' || elem == 'G' || elem == 'B' || elem == 'Y') {
-        log_print("💥 PACMAN COLIDIU COM FANTASMA '%c'!\n", elem);
+        log_print("Pacman colidiu com o fantasma '%c'!\n", elem);
+        enviarArquivo(soquete, "BOO.png", 8);
+        usleep(100000);
         enviaGameOver(soquete);
         usleep(100000);
         exit(0);
@@ -304,13 +306,13 @@ void movimentaPacMan(int soquete, int tipo, char labirinto[MAP_SIZE][MAP_SIZE], 
 
     switch (elem) {
         case '1': case '2': 
-            log_print("✨ PACMAN PEGOU PASTILHA TXT!\n");
+            log_print("pacman pegou pastilha TXT!\n");
             enviarArquivo(soquete, "livro.txt",          5); break;
         case '3': case '4': 
-            log_print("✨ PACMAN PEGOU PASTILHA JPG!\n");
+            log_print("pacman pegou pastilha JPG!\n");
             enviarArquivo(soquete, "naruto.jpg",          6); break;
         case '5': case '6': 
-            log_print("✨ PACMAN PEGOU PASTILHA MP4!\n");
+            log_print("pacman pegou pastilha MP4!\n");
             enviarArquivo(soquete, "naruto_video.mp4",    7); break;
         default: break;
     }
@@ -325,7 +327,7 @@ void movimentaPacMan(int soquete, int tipo, char labirinto[MAP_SIZE][MAP_SIZE], 
             }
         }
         if (artefatosRestantes == 0) {
-            log_print("🎉 TODOS OS ARTEFATOS COLETADOS! ENVIANDO SUCESSO (TIPO=9)...\n");
+            log_print("Todos os aretefatos foram coletados, enviando sucesso(TIPO=9)\n");
             Mensagem *msg_vitoria = criaMensagem();
             msg_vitoria->tipo    = 9;
             msg_vitoria->tamanho = 0;
@@ -402,12 +404,14 @@ void movimentaFantasmas(int soquete, char labirinto[MAP_SIZE][MAP_SIZE], GameSta
     prio[0] = (dir_r + 3) % 4; prio[1] = dir_r; prio[2] = (dir_r + 1) % 4; prio[3] = (dir_r + 2) % 4;
     if (movimentaUmFantasma(labirinto, 7, 'R', prio, &dir_r, gameState) == 'P') {
         log_print("FANTASMA 'R'\n");
-        enviaGameOver(soquete); usleep(100000); exit(0);
+        enviarArquivo(soquete, "BOO.png", 8); usleep(100000); enviaGameOver(soquete); usleep(100000); exit(0);
     }
 
     prio[0] = (dir_b + 1) % 4; prio[1] = dir_b; prio[2] = (dir_b + 3) % 4; prio[3] = (dir_b + 2) % 4;
     if (movimentaUmFantasma(labirinto, 9, 'B', prio, &dir_b, gameState) == 'P') {
         log_print("FANTASMA 'B'\n");
+        enviarArquivo(soquete, "BOO.png", 8);
+        usleep(100000);
         enviaGameOver(soquete);
         usleep(100000);
         exit(0);
@@ -421,7 +425,7 @@ void movimentaFantasmas(int soquete, char labirinto[MAP_SIZE][MAP_SIZE], GameSta
     verde_toggle = !verde_toggle;
     if (movimentaUmFantasma(labirinto, 8, 'G', prio, &dir_g, gameState) == 'P') {
         log_print("FANTASMA 'G'\n");
-        enviaGameOver(soquete); usleep(100000); exit(0);
+        enviarArquivo(soquete, "BOO.png", 8); usleep(100000); enviaGameOver(soquete); usleep(100000); exit(0);
     }
 
     int shuffle[4] = {0, 1, 2, 3};
@@ -431,11 +435,9 @@ void movimentaFantasmas(int soquete, char labirinto[MAP_SIZE][MAP_SIZE], GameSta
     }
     if (movimentaUmFantasma(labirinto, 10, 'Y', shuffle, &dir_y, gameState) == 'P') {
         log_print("FANTASMA 'Y'\n");
-        enviaGameOver(soquete); usleep(100000); exit(0);
+        enviarArquivo(soquete, "BOO.png", 8); usleep(100000); enviaGameOver(soquete); usleep(100000); exit(0);
     }
 }
-
-/* A função leProtocoloMontaMensagem foi removida pois não é mais utilizada (substituída por desmontaMensagem) */
 
 void meu_log(char *mensagem) {
     log_print("%s\n", mensagem);

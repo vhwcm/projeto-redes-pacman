@@ -20,7 +20,7 @@ void game_info(int x, int y, int t1, int t2, int t3, int life);
 // mostra a tela do jogo
 void pacman_game(int lines, int cols, int socket);
 // printa a matriz bruta na tela
-void print_game_map_raw(char game_map[MAP_SIZE * MAP_SIZE]);
+void print_game_map_raw(char game_map[MAP_SIZE * MAP_SIZE], int light);
 
 #define ANSI_COLOR_RED     "\x1b[31m"
 #define ANSI_COLOR_GREEN   "\x1b[32m"

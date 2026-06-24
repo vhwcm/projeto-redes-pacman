@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <termios.h>
 #include <sys/select.h>
+#include <stdlib.h>
 #include "Pacman.h"
 #include "Client_socket.h"
 
@@ -139,70 +140,22 @@ void print_title(int lines, int cols) {
 }
 
 void print_gameclear(int lines, int cols){
-    char *g[] = {
-    " ######    ###    ##   ## ######",
-    "##        ## ##   ### ### ##    ",
-    "##  #### #######  ## # ## ######",
-    "##   ##  ##   ##  ##   ## ##    ",
-    " ######  ##   ##  ##   ## ######"
-    };
-
-    char *c[]= {
-    "###### ##      #######    ###    ######",
-    "##     ##      ##       ## ##   ##   ##",
-    "##     ##      ######  #######  ###### ",
-    "##     ##      ##      ##   ##  ## ##  ",
-    "###### ####### ####### ##   ##  ##  ###"
-    };
-
+    clear_screen();
     int x = lines / 2;
     int y = (cols) / 2;
-
-    attron(COLOR_PAIR(2)|A_BOLD);
-    for(int i = 0; i < 5; i++){
-        mvprintw(x - 10 + i,
-            y + 25,
-            "%s", g[i]);
-
-        mvprintw(x - 3 + i,
-            y + 21,
-            "%s", c[i]);
-    }
-    attroff(COLOR_PAIR(2)|A_BOLD);
+    attron(COLOR_PAIR(3)|A_BOLD);
+    mvprintw(x, y - 5, "GAME CLEAR!");
+    attroff(COLOR_PAIR(3)|A_BOLD);
     refresh();
 }
 
 void print_gameover(int lines, int cols){
-    char *g[] = {
-    " ######    ###    ##   ## ######",
-    "##        ## ##   ### ### ##    ",
-    "##  #### #######  ## # ## ######",
-    "##   ##  ##   ##  ##   ## ##    ",
-    " ######  ##   ##  ##   ## ######"
-    };
-    
-    char *o[] = {
-    "####### ##   ## ####### ###### ",
-    "##   ## ##   ## ##      ##   ##",
-    "##   ## ##   ## ######  ###### ",
-    "##   ##  ## ##  ##      ## ##  ",
-    "#######   ###   ####### ##  ###"
-    };
-
+    clear_screen();
     int x = lines / 2;
     int y = (cols) / 2;
-
-    attron(COLOR_PAIR(2)|A_BOLD);
-    for(int i = 0; i < 5; i++){
-        mvprintw(x - 10 + i,
-            y + 25,
-            "%s", g[i]);
-
-        mvprintw(x - 3 + i,
-            y + 25,
-            "%s", o[i]);
-    }
-    attroff(COLOR_PAIR(2)|A_BOLD);
+    attron(COLOR_PAIR(1)|A_BOLD);
+    mvprintw(x, y - 5, "GAME OVER!");
+    attroff(COLOR_PAIR(1)|A_BOLD);
     refresh();
 }
 
@@ -261,7 +214,19 @@ void game_info(int x, int y, int t1, int t2, int t3, int life){
     attroff(COLOR_PAIR(2)|A_BOLD);
 }
 
-void print_game_map_raw(char game_map[MAP_SIZE * MAP_SIZE]) {
+void print_game_map_raw(char game_map[MAP_SIZE * MAP_SIZE], int light) {
+    int pacman_x = -1, pacman_y = -1;
+    for (int i = 0; i < MAP_SIZE; i++) {
+        for (int j = 0; j < MAP_SIZE; j++) {
+            if (game_map[i * MAP_SIZE + j] == 'P') {
+                pacman_x = j;
+                pacman_y = i;
+                break;
+            }
+        }
+        if (pacman_x != -1) break;
+    }
+
     for (int j = 0; j < MAP_SIZE + 2; j++) {
         printf("#");
     }
@@ -270,22 +235,34 @@ void print_game_map_raw(char game_map[MAP_SIZE * MAP_SIZE]) {
         printf("#");
         for (int j = 0; j < MAP_SIZE; j++) {
             char c = game_map[i * MAP_SIZE + j];
-            if (c == '0') {
-                printf(" ");
-            } else if (c == 'X') {
-                printf("#");
-            } else if (c == 'R') {
-                printf("%sR%s", ANSI_COLOR_RED, ANSI_COLOR_RESET);
-            } else if (c == 'G') {
-                printf("%sG%s", ANSI_COLOR_GREEN, ANSI_COLOR_RESET);
-            } else if (c == 'B') {
-                printf("%sB%s", ANSI_COLOR_BLUE, ANSI_COLOR_RESET);
-            } else if (c == 'Y') {
-                printf("%sY%s", ANSI_COLOR_YELLOW, ANSI_COLOR_RESET);
-            } else if (c == 'P') {
-                printf("%sP%s", ANSI_COLOR_YELLOW, ANSI_COLOR_RESET);
+
+            int is_visible = debug_mode;
+            if (!is_visible && pacman_x != -1) {
+                if (abs(j - pacman_x) <= light && abs(i - pacman_y) <= light) {
+                    is_visible = 1;
+                }
+            }
+
+            if (!is_visible) {
+                printf("~");
             } else {
-                printf("%c", c);
+                if (c == '0') {
+                    printf(" ");
+                } else if (c == 'X') {
+                    printf("#");
+                } else if (c == 'R') {
+                    printf("%sR%s", ANSI_COLOR_RED, ANSI_COLOR_RESET);
+                } else if (c == 'G') {
+                    printf("%sG%s", ANSI_COLOR_GREEN, ANSI_COLOR_RESET);
+                } else if (c == 'B') {
+                    printf("%sB%s", ANSI_COLOR_BLUE, ANSI_COLOR_RESET);
+                } else if (c == 'Y') {
+                    printf("%sY%s", ANSI_COLOR_YELLOW, ANSI_COLOR_RESET);
+                } else if (c == 'P') {
+                    printf("%sP%s", ANSI_COLOR_YELLOW, ANSI_COLOR_RESET);
+                } else {
+                    printf("%c", c);
+                }
             }
         }
         printf("#\n");
@@ -298,8 +275,6 @@ void print_game_map_raw(char game_map[MAP_SIZE * MAP_SIZE]) {
 }
 
 void pacman_game(int lines, int cols, int socket) {
-    (void)lines;
-    (void)cols;
     int  light = 1, counter = 0;
 
     init_pair(1, COLOR_RED,    COLOR_BLACK);    // enemy info
@@ -339,7 +314,7 @@ void pacman_game(int lines, int cols, int socket) {
     int ch, n = 1;
 
     while(1){
-        print_game_map_raw(game_map);
+        print_game_map_raw(game_map, light);
         keypad(stdscr, TRUE);
         flushinp();
         ch = my_getch();
@@ -389,19 +364,21 @@ void pacman_game(int lines, int cols, int socket) {
         if(n == 2){ return;}
         else if(n == 9){
             //printar game clear na tela
-            keypad(stdscr, TRUE);
-            my_getch();
+            clear_screen();
+            print_gameclear(lines, cols);
+            usleep(1500000); // 1.5s delay to let the user see
             break;
         }
         else if(n == 14){
             //printar game over na tela
-            keypad(stdscr, TRUE);
-            my_getch();
+            clear_screen();
+            print_gameover(lines, cols);
+            usleep(1500000); // 1.5s delay to let the user see
             break;
         }
 
         // calcula a luz do pacman
-        if(counter == 5 - 1 && light < 5){
+        if(counter == 5 - 1){
             light++;
             counter = 0;
         }

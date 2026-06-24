@@ -95,7 +95,7 @@ tipos de mensagem:
 5 -> txt
 6 -> jpg
 7 -> mp4
-8
+8 -> fantasma
 9  - Fim de jogo (sucesso)
 10 - direita
 11 - esquerda

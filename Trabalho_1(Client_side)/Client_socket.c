@@ -44,6 +44,7 @@ void log_print(const char *format, ...) {
 int txt = 0;
 int jpg = 0;
 int mp4 = 0;
+int boo_img = 0;
 int seq = 0, slide = 0;
 
 // timeout
@@ -809,6 +810,121 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
             else{   
                 system("mpv VIDEO_1.mp4 > /dev/null 2>&1");
                 remove("VIDEO_1.mp4");
+            }
+            goto DATA;
+//-------------------------------------------------------------------------------------
+        case FANTASMA: //BOO.png
+            FILE *fantasma_file;
+
+            if(boo_img == 0){   fantasma_file = fopen("BOO_1.png", "wb");}
+            else{   fantasma_file = fopen("BOO_2.png", "wb");}
+
+            boo_img = !boo_img;
+
+            if(!fantasma_file){
+                perror("ERROR: erro ao abrir o boo_img\n");
+                return 0;
+            }
+
+            do{
+                 log_print("Sequencia esperada (FANTASMA): %d\n", seq);
+                if(msg->sequencia == seq){
+                    if(msg->tamanho > 0) fwrite(msg->dados, 1, msg->tamanho, fantasma_file);
+
+                    if(slide == 4 || msg->tipo == FIM_TRANSMISSAO){
+                        Enviar_p_servidor(socket, ACK, seq);
+                        slide = 0;
+                    }
+                    else{   slide++;}
+
+                    if(seq == 63){  seq = 0;}   // reinicia a sequência
+                    else{   seq++;}
+
+                    if (msg->tipo == FIM_TRANSMISSAO) {
+                        break;
+                    }
+                }
+                else{
+                    // recebeu seq errada
+                    int diff = (msg->sequencia - seq + 64) % 64;
+                    if (diff < 32) {
+                        log_print("aqui (pacote futuro %d, enviando NACK %d)\n", msg->sequencia, seq);
+                        Enviar_p_servidor(socket, NACK, seq);   
+                        slide = 0;
+                    } else {
+                        log_print("ignorado pacote antigo %d (esperava %d)\n", msg->sequencia, seq);
+                    }
+                }
+
+                FANT:
+                while (1) {
+                    n = recvfrom(socket, pacote, 35, 0, (struct sockaddr *)&sll, &sll_len);
+                    if (n <= 0) break;
+                    if (sll.sll_pkttype == PACKET_OUTGOING) continue;
+                    if (n >= 35 && pacote[0] == MARCA_INICIO) {
+                        int tipo_pacote = pacote[2] & 0b11111;
+                        if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO || 
+                            tipo_pacote == ESQUERDA || tipo_pacote == DIREITA || tipo_pacote == 0 || tipo_pacote == 1) {
+                            fflush(stdout);
+                            usleep(10000);
+                            continue; 
+                        }
+                    }
+                    break;
+                }
+             
+                while((msg = desmontar_msg(pacote)) == NULL || n <= 0){
+                    // erro na desmontagem da msg
+                    Enviar_p_servidor(socket, NACK, seq);   
+                    while (1) {
+                        n = recvfrom(socket, pacote, 35, 0, (struct sockaddr *)&sll, &sll_len);
+                        if (n <= 0) break;
+                        if (sll.sll_pkttype == PACKET_OUTGOING) continue;
+                        if (n >= 35 && pacote[0] == MARCA_INICIO) {
+                            int tipo_pacote = pacote[2] & 0b11111;
+                            if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO || 
+                                tipo_pacote == ESQUERDA || tipo_pacote == DIREITA || tipo_pacote == 0 || tipo_pacote == 1) {
+                                fflush(stdout);
+                                usleep(10000);
+                                continue; 
+                            }
+                        }
+                        break;
+                    }
+                    slide = 0;
+                }
+
+                // caso receber NACK
+                if(msg->tipo == NACK){
+                    if(slide == 0){
+                        if(seq == 0){
+                            Enviar_p_servidor(socket, ACK, 63);
+                        }
+                        else{
+                            Enviar_p_servidor(socket, ACK, seq-1);
+                        }
+                        goto FANT;
+                    }
+                    else{
+                        if(seq == 0){
+                            Enviar_p_servidor(socket, NACK, 63);
+                        }
+                        else{
+                            Enviar_p_servidor(socket, NACK, seq-1);
+                        }
+                        goto FANT;
+                    }
+                }
+            }while(1);
+            // muda para receber dados
+            fclose(fantasma_file);
+            if(boo_img == 0){   
+                system("feh BOO_2.png > /dev/null 2>&1");
+                remove("BOO_2.png");
+            }
+            else{   
+                system("feh BOO_1.png > /dev/null 2>&1");
+                remove("BOO_1.png");
             }
             goto DATA;
 //-------------------------------------------------------------------------------------
