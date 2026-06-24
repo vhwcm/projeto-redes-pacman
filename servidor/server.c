@@ -21,7 +21,7 @@ static long long timestamp_ms(void)
 }
 
 
-void enviarVisualizacao(int soquete, char labirinto[MAP_SIZE][MAP_SIZE]);
+void enviarVisualizacao(int soquete, char labirinto[MAP_SIZE][MAP_SIZE], GameState *gameState);
 void printaMensagem(Mensagem *mensagem);
 char realizaMovimento(char labirinto[MAP_SIZE][MAP_SIZE], int novaPosX, int novaPosY, GameState *gameState);
 void movimentaPacMan(int soquete, int tipo, char labirinto[MAP_SIZE][MAP_SIZE], GameState *gameState);
@@ -37,6 +37,7 @@ static uint8_t seq_server = 0;
 
 int main(int argc, char *argv[])
 {
+    init_log("server.log");
     if (argc < 2)
     {
         log_print("Uso: %s <nome_rede> [arquivo_labirinto]\n", argv[0]);
@@ -60,8 +61,8 @@ int main(int argc, char *argv[])
         FILE *arquivoCSV = fopen(argv[2], "r");
         if (arquivoCSV == NULL)
         {
-            log_print("Erro ao abrir arquivo\n");
-            return 1;
+            perror("Erro ao abrir arquivo");
+            exit(1);
         }
         carregaLabirinto(arquivoCSV, gameState->labirinto, gameState);
         fclose(arquivoCSV);
@@ -116,16 +117,15 @@ int main(int argc, char *argv[])
                 if (tipo == 0 || tipo == 1 || tipo == 5 || tipo == 6 || tipo == 7 || tipo == 14 || tipo == 16) {
                     if (mensagemCliente->dados) free(mensagemCliente->dados);
                     free(mensagemCliente);
-                    continue; // Nosso próprio pacote (eco do servidor)
+                    continue;
                 }
                 if (tipo == 2 && mensagemCliente->tamanho > 0) {
                     if (mensagemCliente->dados) free(mensagemCliente->dados);
                     free(mensagemCliente);
-                    continue; // Nosso próprio pacote (mapa enviado pelo servidor)
+                    continue;
                 }
             }
 
-            // ACKs e NAKs (mensagens de controle)
             if (tipo == 0 || tipo == 1) {
                 log_print("Recebido %s para sequencia %d\n", tipo == 0 ? "AK" : "NAK", mensagemCliente->num_sequencia);
                 if (mensagemCliente->dados) free(mensagemCliente->dados);
@@ -133,7 +133,6 @@ int main(int argc, char *argv[])
                 continue;
             }
 
-            // Lógica de Sequencialização para mensagens de DADOS do cliente
             if (mensagemCliente->num_sequencia == expected_seq_recv) {
                 log_print("Mensagem recebida na sequencia correta: %d\n", expected_seq_recv);
                 expected_seq_recv = (expected_seq_recv + 1) % 64;
@@ -151,7 +150,7 @@ int main(int argc, char *argv[])
                 {
                 case 3:
                     meu_log("vizualização recebida");
-                    enviarVisualizacao(soquete, gameState->labirinto);
+                    enviarVisualizacao(soquete, gameState->labirinto, gameState);
                     break;
                 case 10:
                 case 11:
@@ -160,7 +159,11 @@ int main(int argc, char *argv[])
                     meu_log("movimentacao recebida");
                     movimentaPacMan(soquete, tipo, gameState->labirinto, gameState);
                     movimentaFantasmas(soquete, gameState->labirinto, gameState);
-                    enviarVisualizacao(soquete, gameState->labirinto);
+                    enviarVisualizacao(soquete, gameState->labirinto, gameState);
+                    break;
+                case 15:
+                    printf("Erro recebido do cliente. Encerrando servidor.\n");
+                    exit(1);
                     break;
                 default:
                     break;
@@ -180,21 +183,44 @@ int main(int argc, char *argv[])
     return 0;
 }
 
-void enviarVisualizacao(int soquete, char labirinto[MAP_SIZE][MAP_SIZE])
+void enviarVisualizacao(int soquete, char labirinto[MAP_SIZE][MAP_SIZE], GameState *gameState)
 {
-    uint8_t total_data[MAP_SIZE * MAP_SIZE];
-    for (int i = 0; i < MAP_SIZE; i++) {
-        for (int j = 0; j < MAP_SIZE; j++) {
-            total_data[i * MAP_SIZE + j] = (uint8_t)labirinto[i][j];
+    int R = 1 + (gameState->movimentos_totais / 5);
+    int pX = gameState->artefatosPosX[0];
+    int pY = gameState->artefatosPosY[0];
+
+    int minX = pX - R; if (minX < 0) minX = 0;
+    int maxX = pX + R; if (maxX >= MAP_SIZE) maxX = MAP_SIZE - 1;
+    int minY = pY - R; if (minY < 0) minY = 0;
+    int maxY = pY + R; if (maxY >= MAP_SIZE) maxY = MAP_SIZE - 1;
+
+    int width = maxX - minX + 1;
+    int height = maxY - minY + 1;
+    uint32_t tam = 4 + width * height;
+    
+    uint8_t *total_data = malloc(tam);
+    if (!total_data) { enviaErro(soquete); exit(1); }
+    
+    total_data[0] = (uint8_t)minX;
+    total_data[1] = (uint8_t)maxX;
+    total_data[2] = (uint8_t)minY;
+    total_data[3] = (uint8_t)maxY;
+
+    int p = 4;
+    for (int i = minX; i <= maxX; i++) {
+        for (int j = minY; j <= maxY; j++) {
+            total_data[p++] = (uint8_t)labirinto[i][j];
         }
     }
 
     Mensagem *msg = criaMensagem();
     msg->tipo    = 2;
-    msg->tamanho = MAP_SIZE * MAP_SIZE;
+    msg->tamanho = tam;
     msg->dados   = total_data;
 
     enviaMensagem(msg, soquete, &seq_server);
+
+    free(total_data);
 
     free(msg);
 }
@@ -203,8 +229,9 @@ void enviarArquivo(int soquete, const char *caminho, uint8_t tipo)
 {
     FILE *f = fopen(caminho, "rb");
     if (!f) {
-        log_print("Erro ao abrir arquivo: %s\n", caminho);
-        return;
+        perror("Erro ao abrir o arquivo para envio");
+        enviaErro(soquete);
+        exit(1);
     }
 
     fseek(f, 0, SEEK_END);
@@ -212,11 +239,7 @@ void enviarArquivo(int soquete, const char *caminho, uint8_t tipo)
     rewind(f);
 
     uint8_t *dados = malloc(tamanho);
-    if (!dados) {
-        fclose(f);
-        return;
-    }
-
+    if (!dados) { enviaErro(soquete); exit(1); }
     fread(dados, 1, tamanho, f);
     fclose(f);
 
@@ -262,18 +285,17 @@ char realizaMovimento(char labirinto[MAP_SIZE][MAP_SIZE], int novaPosX, int nova
     int pxAtual = gameState->artefatosPosX[0];
     int pyAtual = gameState->artefatosPosY[0];
 
+    if (elemento == 'R' || elemento == 'G' || elemento == 'B' || elemento == 'Y') {
+        labirinto[pxAtual][pyAtual] = '0';
+        gameState->artefatosPosX[0] = -1;
+        gameState->artefatosPosY[0] = -1;
+        return elemento;
+    }
+
     labirinto[pxAtual][pyAtual] = '0';
     labirinto[posXVerificar][posYVerificar] = 'P';
     gameState->artefatosPosX[0] = posXVerificar;
     gameState->artefatosPosY[0] = posYVerificar;
-
-    switch (elemento) {
-        case 'R': gameState->artefatosPosX[7] = -1; gameState->artefatosPosY[7] = -1; break;
-        case 'G': gameState->artefatosPosX[8] = -1; gameState->artefatosPosY[8] = -1; break;
-        case 'B': gameState->artefatosPosX[9] = -1; gameState->artefatosPosY[9] = -1; break;
-        case 'Y': gameState->artefatosPosX[10] = -1; gameState->artefatosPosY[10] = -1; break;
-        default: break;
-    }
 
     return elemento;
 }
@@ -294,14 +316,20 @@ void movimentaPacMan(int soquete, int tipo, char labirinto[MAP_SIZE][MAP_SIZE], 
 
     char elem = realizaMovimento(labirinto, novaPosX, novaPosY, gameState);
     log_print("Movimento PacMan: elem='%c'\n", elem);
+    gameState->movimentos_totais++;
 
     if (elem == 'R' || elem == 'G' || elem == 'B' || elem == 'Y') {
         log_print("Pacman colidiu com o fantasma '%c'!\n", elem);
         enviarArquivo(soquete, "BOO.png", 8);
         usleep(100000);
-        enviaGameOver(soquete);
-        usleep(100000);
-        exit(0);
+        gameState->vidas--;
+        if (gameState->vidas <= 0) {
+            enviaGameOver(soquete);
+            usleep(100000);
+            exit(0);
+        } else {
+            resetaPosicoes(labirinto, gameState);
+        }
     }
 
     switch (elem) {
@@ -404,17 +432,19 @@ void movimentaFantasmas(int soquete, char labirinto[MAP_SIZE][MAP_SIZE], GameSta
     prio[0] = (dir_r + 3) % 4; prio[1] = dir_r; prio[2] = (dir_r + 1) % 4; prio[3] = (dir_r + 2) % 4;
     if (movimentaUmFantasma(labirinto, 7, 'R', prio, &dir_r, gameState) == 'P') {
         log_print("FANTASMA 'R'\n");
-        enviarArquivo(soquete, "BOO.png", 8); usleep(100000); enviaGameOver(soquete); usleep(100000); exit(0);
+        enviarArquivo(soquete, "BOO.png", 8); usleep(100000); 
+        gameState->vidas--;
+        if(gameState->vidas <= 0) { enviaGameOver(soquete); usleep(100000); exit(0); }
+        else { resetaPosicoes(labirinto, gameState); return; }
     }
 
     prio[0] = (dir_b + 1) % 4; prio[1] = dir_b; prio[2] = (dir_b + 3) % 4; prio[3] = (dir_b + 2) % 4;
     if (movimentaUmFantasma(labirinto, 9, 'B', prio, &dir_b, gameState) == 'P') {
         log_print("FANTASMA 'B'\n");
-        enviarArquivo(soquete, "BOO.png", 8);
-        usleep(100000);
-        enviaGameOver(soquete);
-        usleep(100000);
-        exit(0);
+        enviarArquivo(soquete, "BOO.png", 8); usleep(100000); 
+        gameState->vidas--;
+        if(gameState->vidas <= 0) { enviaGameOver(soquete); usleep(100000); exit(0); }
+        else { resetaPosicoes(labirinto, gameState); return; }
     }
 
     if (verde_toggle == 0) {
@@ -425,7 +455,10 @@ void movimentaFantasmas(int soquete, char labirinto[MAP_SIZE][MAP_SIZE], GameSta
     verde_toggle = !verde_toggle;
     if (movimentaUmFantasma(labirinto, 8, 'G', prio, &dir_g, gameState) == 'P') {
         log_print("FANTASMA 'G'\n");
-        enviarArquivo(soquete, "BOO.png", 8); usleep(100000); enviaGameOver(soquete); usleep(100000); exit(0);
+        enviarArquivo(soquete, "BOO.png", 8); usleep(100000); 
+        gameState->vidas--;
+        if(gameState->vidas <= 0) { enviaGameOver(soquete); usleep(100000); exit(0); }
+        else { resetaPosicoes(labirinto, gameState); return; }
     }
 
     int shuffle[4] = {0, 1, 2, 3};
@@ -435,7 +468,10 @@ void movimentaFantasmas(int soquete, char labirinto[MAP_SIZE][MAP_SIZE], GameSta
     }
     if (movimentaUmFantasma(labirinto, 10, 'Y', shuffle, &dir_y, gameState) == 'P') {
         log_print("FANTASMA 'Y'\n");
-        enviarArquivo(soquete, "BOO.png", 8); usleep(100000); enviaGameOver(soquete); usleep(100000); exit(0);
+        enviarArquivo(soquete, "BOO.png", 8); usleep(100000); 
+        gameState->vidas--;
+        if(gameState->vidas <= 0) { enviaGameOver(soquete); usleep(100000); exit(0); }
+        else { resetaPosicoes(labirinto, gameState); return; }
     }
 }
 

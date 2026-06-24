@@ -301,11 +301,14 @@ Mensagem *desmontar_msg(char* buffer){
 int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
     char *buffer = malloc(35);
     Mensagem *msg = NULL;
+    if (!buffer) { Enviar_p_servidor(socket, ERROS, 0); exit(1); }
     char *pacote = malloc(35);
+    if (!pacote) { Enviar_p_servidor(socket, ERROS, 0); exit(1); }
     struct sockaddr_ll sll;
     socklen_t sll_len = sizeof(sll);
     log_print("Sequencia esperada %d\n", seq);
     int n;
+WAIT_FOR_MSG:
     while (1) {
         n = recvfrom(socket, pacote, 35, 0, (struct sockaddr *)&sll, &sll_len);
         
@@ -337,7 +340,8 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
         }
     }
     slide++;
-    int seq_mapa = 0;
+    int vis_len = 0;
+    uint8_t temp_vis_buffer[2000];
     // caso receber exceto ack e nack
     log_print("Sequencia esperada %d\n", seq);
     switch (msg->tipo){
@@ -356,9 +360,8 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
                  log_print("Sequencia esperada:  %d\n", seq);
                 if(msg->sequencia == seq){
                     for(int i = 0; i < msg->tamanho; i++){
-                        int idx = i + seq_mapa * 31;
-                        if (idx < MAP_SIZE * MAP_SIZE) {
-                            game_map[idx] = msg->dados[i];
+                        if (vis_len < 2000) {
+                            temp_vis_buffer[vis_len++] = msg->dados[i];
                         }
                     }
 
@@ -374,9 +377,23 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
                          seq++;
                     }
 
-                    seq_mapa++;
-
                     if (msg->tipo == FIM_TRANSMISSAO) {
+                        if (vis_len >= 4) {
+                            int minX = temp_vis_buffer[0];
+                            int maxX = temp_vis_buffer[1];
+                            int minY = temp_vis_buffer[2];
+                            int maxY = temp_vis_buffer[3];
+                            memset(game_map, '~', MAP_SIZE * MAP_SIZE);
+                            int p = 4;
+                            for (int i = minX; i <= maxX; i++) {
+                                for (int j = minY; j <= maxY; j++) {
+                                    if (p < vis_len) {
+                                        game_map[i * MAP_SIZE + j] = temp_vis_buffer[p];
+                                    }
+                                    p++;
+                                }
+                            }
+                        }
                         break;
                     }
                 }
@@ -474,8 +491,9 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
             txt = !txt;
 
             if(!arquivo){
-                perror("ERROR: erro ao abrir o arquivo txt\n");
-                return 0;
+                perror("ERROR: erro ao abrir o arquivo texto\n");
+                Enviar_p_servidor(socket, ERROS, 0);
+                exit(1);
             }
 
             do{
@@ -571,15 +589,11 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
             // muda para receber dados
             fclose(arquivo);
             t1++;
-            if(txt == 0){   
-                system("less TEXTO_2.txt ");
-                remove("TEXTO_2.txt");
-            }
-            else{   
-                system("less TEXTO_1.txt ");
-                remove("TEXTO_1.txt");
-            }
-            goto DATA;            
+            if(txt == 0){   system("cat TEXTO_2.txt"); remove("TEXTO_2.txt");}
+            else{   system("cat TEXTO_1.txt"); remove("TEXTO_1.txt");}
+            if(msg && msg->dados) { free(msg->dados); msg->dados = NULL; }
+            if(msg) { free(msg); msg = NULL; }
+            goto WAIT_FOR_MSG;            
 //-------------------------------------------------------------------------------------
         case JPG: //jpg
             FILE *imagem;
@@ -590,8 +604,9 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
             jpg = !jpg;
 
             if(!imagem){
-                perror("ERROR: erro ao abrir o imagem jpg\n");
-                return 0;
+                perror("ERROR: erro ao abrir o arquivo imagem\n");
+                Enviar_p_servidor(socket, ERROS, 0);
+                exit(1);
             }
 
             do{
@@ -687,15 +702,11 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
             // muda para receber dados
             fclose(imagem);
             t2++;
-            if(jpg == 0){   
-                system("feh IMAGEM_2.jpg > /dev/null 2>&1");
-                remove("IMAGEM_2.jpg");
-            }
-            else{   
-                system("feh IMAGEM_1.jpg > /dev/null 2>&1");
-                remove("IMAGEM_1.jpg");
-            }
-            goto DATA;
+            if(jpg == 0){   system("feh IMAGEM_2.jpg > /dev/null 2>&1"); remove("IMAGEM_2.jpg");}
+            else{   system("feh IMAGEM_1.jpg > /dev/null 2>&1"); remove("IMAGEM_1.jpg");}
+            if(msg && msg->dados) { free(msg->dados); msg->dados = NULL; }
+            if(msg) { free(msg); msg = NULL; }
+            goto WAIT_FOR_MSG;
 //-------------------------------------------------------------------------------------
         case MP4: //mp4
             FILE *video;
@@ -706,8 +717,9 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
             mp4 = !mp4;
 
             if(!video){
-                perror("ERROR: erro ao abrir o video mp4\n");
-                return 0;
+                perror("ERROR: erro ao abrir o video\n");
+                Enviar_p_servidor(socket, ERROS, 0);
+                exit(1);
             }
 
             do{
@@ -803,17 +815,14 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
             // muda para receber dados
             fclose(video);
             t3++;
-            if(mp4 == 0){   
-                system("mpv VIDEO_2.mp4 > /dev/null 2>&1");
-                remove("VIDEO_2.mp4");
-            }
-            else{   
-                system("mpv VIDEO_1.mp4 > /dev/null 2>&1");
-                remove("VIDEO_1.mp4");
-            }
-            goto DATA;
+            if(mp4 == 0){   system("mpv VIDEO_2.mp4 > /dev/null 2>&1"); remove("VIDEO_2.mp4");}
+            else{   system("mpv VIDEO_1.mp4 > /dev/null 2>&1"); remove("VIDEO_1.mp4");}
+            if(msg && msg->dados) { free(msg->dados); msg->dados = NULL; }
+            if(msg) { free(msg); msg = NULL; }
+            goto WAIT_FOR_MSG;
 //-------------------------------------------------------------------------------------
         case FANTASMA: //BOO.png
+            pacman_life--;
             FILE *fantasma_file;
 
             if(boo_img == 0){   fantasma_file = fopen("BOO_1.png", "wb");}
@@ -823,7 +832,8 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
 
             if(!fantasma_file){
                 perror("ERROR: erro ao abrir o boo_img\n");
-                return 0;
+                Enviar_p_servidor(socket, ERROS, 0);
+                exit(1);
             }
 
             do{
@@ -926,7 +936,9 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
                 system("feh BOO_1.png > /dev/null 2>&1");
                 remove("BOO_1.png");
             }
-            goto DATA;
+            if(msg && msg->dados) { free(msg->dados); msg->dados = NULL; }
+            if(msg) { free(msg); msg = NULL; }
+            goto WAIT_FOR_MSG;
 //-------------------------------------------------------------------------------------
         case GAME_CLEAR:
             GC:
@@ -941,6 +953,8 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
             return 14;
 //-------------------------------------------------------------------------------------
         case ERROS: //erros
+            printf("Erro recebido do servidor. Encerrando jogo.\n");
+            exit(1);
             return 0;
 //-------------------------------------------------------------------------------------
         case FIM_TRANSMISSAO: //fim_transmissao

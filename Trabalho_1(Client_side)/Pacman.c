@@ -214,19 +214,7 @@ void game_info(int x, int y, int t1, int t2, int t3, int life){
     attroff(COLOR_PAIR(2)|A_BOLD);
 }
 
-void print_game_map_raw(char game_map[MAP_SIZE * MAP_SIZE], int light) {
-    int pacman_x = -1, pacman_y = -1;
-    for (int i = 0; i < MAP_SIZE; i++) {
-        for (int j = 0; j < MAP_SIZE; j++) {
-            if (game_map[i * MAP_SIZE + j] == 'P') {
-                pacman_x = j;
-                pacman_y = i;
-                break;
-            }
-        }
-        if (pacman_x != -1) break;
-    }
-
+void print_game_map_raw(char game_map[MAP_SIZE * MAP_SIZE]) {
     for (int j = 0; j < MAP_SIZE + 2; j++) {
         printf("#");
     }
@@ -236,14 +224,7 @@ void print_game_map_raw(char game_map[MAP_SIZE * MAP_SIZE], int light) {
         for (int j = 0; j < MAP_SIZE; j++) {
             char c = game_map[i * MAP_SIZE + j];
 
-            int is_visible = debug_mode;
-            if (!is_visible && pacman_x != -1) {
-                if (abs(j - pacman_x) <= light && abs(i - pacman_y) <= light) {
-                    is_visible = 1;
-                }
-            }
-
-            if (!is_visible) {
+            if (c == '~') {
                 printf("~");
             } else {
                 if (c == '0') {
@@ -275,36 +256,34 @@ void print_game_map_raw(char game_map[MAP_SIZE * MAP_SIZE], int light) {
 }
 
 void pacman_game(int lines, int cols, int socket) {
-    int  light = 1, counter = 0;
+    pacman_life = 5;
 
-    init_pair(1, COLOR_RED,    COLOR_BLACK);    // enemy info
-    init_pair(2, 226, COLOR_BLACK);             // pacman and enemy info
-    init_pair(3, COLOR_GREEN,  COLOR_BLACK);    // enemy info
-    init_pair(4, COLOR_BLUE,   COLOR_BLACK);    // enemy info
+    init_pair(1, COLOR_RED,    COLOR_BLACK);    
+    init_pair(2, 226, COLOR_BLACK);             
+    init_pair(3, COLOR_GREEN,  COLOR_BLACK);   
+    init_pair(4, COLOR_BLUE,   COLOR_BLACK);    
     
-    init_pair(5, 226, 240);        // yellow in game
-    init_pair(6, COLOR_RED, 240);    // red in game
-    init_pair(7, COLOR_GREEN, 240);  // green in game
-    init_pair(8, COLOR_BLUE, 240);   // blue in game
+    init_pair(5, 226, 240);       
+    init_pair(6, COLOR_RED, 240);  
+    init_pair(7, COLOR_GREEN, 240); 
+    init_pair(8, COLOR_BLUE, 240);  
 
-    init_pair(9, COLOR_WHITE,  COLOR_WHITE);    // paredes
-    init_pair(10, COLOR_BLACK,  240);    // cor para limitar a visão do pacman
+    init_pair(9, COLOR_WHITE,  COLOR_WHITE);    
+    init_pair(10, COLOR_BLACK,  240);   
 
     keypad(stdscr, FALSE);
     noecho();
     
     char game_map[MAP_SIZE * MAP_SIZE];
-    // receber o mapa do servidor 
     do{
         Enviar_p_servidor(socket, INICIALIZACAO, 0);
         log_print("======================================================\n");
     }while(Receber_d_servidor(socket, game_map) <= 0);
 
     log_print("fim da inicialização\n");
-    seq_send++; // Sincroniza a próxima mensagem de comando para a sequência 1
+    seq_send++;
 
 
-    // receber o dado necessario para o jogo (life do pacman)
 /*
     do{
         Enviar_p_servidor(socket, VIDA_PACMAN, 0);
@@ -314,13 +293,12 @@ void pacman_game(int lines, int cols, int socket) {
     int ch, n = 1;
 
     while(1){
-        print_game_map_raw(game_map, light);
+        print_game_map_raw(game_map);
         keypad(stdscr, TRUE);
         flushinp();
         ch = my_getch();
         keypad(stdscr, FALSE);
 
-        // se ch != F1, enviar a seta e atualizar o mapa
         switch(ch){
             case KEY_UP:
                 do{
@@ -351,41 +329,28 @@ void pacman_game(int lines, int cols, int socket) {
                 seq_send = (seq_send + 1) % 64;
                 break;
             case KEY_F(1):  
-                // avisar o servidor o fim da transmissão
                 do{
                     log_print("Enviando FIM DE JOGO (q) - Sequencia: %d\n", seq_send);
                     Enviar_p_servidor(socket, FIM_TRANSMISSAO, seq_send);
                 }while((n = Receber_d_servidor(socket, game_map)) <= 0);
                 seq_send = (seq_send + 1) % 64;
-                return; // sair do jogo
+                return; 
         }
 
-        // quando receber fim_transmissao do servidor
         if(n == 2){ return;}
         else if(n == 9){
-            //printar game clear na tela
             clear_screen();
             print_gameclear(lines, cols);
-            usleep(1500000); // 1.5s delay to let the user see
+            usleep(1500000); 
             break;
         }
         else if(n == 14){
-            //printar game over na tela
             clear_screen();
             print_gameover(lines, cols);
-            usleep(1500000); // 1.5s delay to let the user see
+            usleep(1500000); 
             break;
         }
 
-        // calcula a luz do pacman
-        if(counter == 5 - 1){
-            light++;
-            counter = 0;
-        }
-        else{
-            counter++;
-        }
-
-        clear_screen(); //limpa a tela uma vez para atualizar ela
+        clear_screen(); 
     }
 }

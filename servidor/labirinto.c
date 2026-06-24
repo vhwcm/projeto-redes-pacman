@@ -2,6 +2,8 @@
 
 #include <stdlib.h>
 #include <time.h>
+#include <string.h>
+#include <stdio.h>
 
 static const char LABIRINTO[MAP_SIZE][MAP_SIZE] = {
     "0000000000000000000000000000000000000X00",
@@ -55,6 +57,13 @@ GameState* criaGameState()
         return NULL;
     }
     
+    gameState->vidas = 5;
+    gameState->movimentos_totais = 0;
+    for (int i = 0; i < 12; i++) {
+        gameState->startPosX[i] = -1;
+        gameState->startPosY[i] = -1;
+    }
+
     iniciaLabirinto(gameState->labirinto);
     carregaPosicoesLabirinto(gameState->labirinto, gameState);
     
@@ -77,19 +86,19 @@ void iniciaLabirinto(char labirinto[MAP_SIZE][MAP_SIZE])
 
 void carregaLabirinto(FILE *arquivo, char labirinto[MAP_SIZE][MAP_SIZE], GameState *gameState)
 {
-    char buffer[5000];
-    int ponteiroBuffer = 0;
-    if (fgets(buffer, sizeof(buffer), arquivo) != NULL)
+    char line[1024];
+    int i = 0;
+    while (i < MAP_SIZE && fgets(line, sizeof(line), arquivo) != NULL)
     {
-        for (int i = 0; i < MAP_SIZE; i++)
-        {
-            for (int j = 0; j < MAP_SIZE; j++)
-            {
-                labirinto[i][j] = buffer[ponteiroBuffer];
-                posicionaAretefatoNoGameState(i, j, buffer[ponteiroBuffer], gameState);
-                ponteiroBuffer += 2;
-            }
+        int j = 0;
+        char *token = strtok(line, ";\n\r");
+        while (token != NULL && j < MAP_SIZE) {
+            labirinto[i][j] = token[0];
+            posicionaAretefatoNoGameState(i, j, token[0], gameState);
+            j++;
+            token = strtok(NULL, ";\n\r");
         }
+        i++;
     }
 }
 
@@ -117,51 +126,78 @@ void posicionaAretefatoNoGameState(int x, int y, char a, GameState *gameState)
     switch (a)
     {
     case 'P':
-        gameState->artefatosPosX[0] = x;
-        gameState->artefatosPosY[0] = y;
+        gameState->artefatosPosX[0] = x; gameState->artefatosPosY[0] = y;
+        gameState->startPosX[0] = x; gameState->startPosY[0] = y;
         break;
     case '1':
-        gameState->artefatosPosX[1] = x;
-        gameState->artefatosPosY[1] = y;
+        gameState->artefatosPosX[1] = x; gameState->artefatosPosY[1] = y;
+        gameState->startPosX[1] = x; gameState->startPosY[1] = y;
         break;
     case '2':
-        gameState->artefatosPosX[2] = x;
-        gameState->artefatosPosY[2] = y;
+        gameState->artefatosPosX[2] = x; gameState->artefatosPosY[2] = y;
+        gameState->startPosX[2] = x; gameState->startPosY[2] = y;
         break;
     case '3':
-        gameState->artefatosPosX[3] = x;
-        gameState->artefatosPosY[3] = y;
+        gameState->artefatosPosX[3] = x; gameState->artefatosPosY[3] = y;
+        gameState->startPosX[3] = x; gameState->startPosY[3] = y;
         break;
     case '4':
-        gameState->artefatosPosX[4] = x;
-        gameState->artefatosPosY[4] = y;
+        gameState->artefatosPosX[4] = x; gameState->artefatosPosY[4] = y;
+        gameState->startPosX[4] = x; gameState->startPosY[4] = y;
         break;
     case '5':
-        gameState->artefatosPosX[5] = x;
-        gameState->artefatosPosY[5] = y;
+        gameState->artefatosPosX[5] = x; gameState->artefatosPosY[5] = y;
+        gameState->startPosX[5] = x; gameState->startPosY[5] = y;
         break;
     case '6':
-        gameState->artefatosPosX[6] = x;
-        gameState->artefatosPosY[6] = y;
+        gameState->artefatosPosX[6] = x; gameState->artefatosPosY[6] = y;
+        gameState->startPosX[6] = x; gameState->startPosY[6] = y;
         break;
     case 'R':
-        gameState->artefatosPosX[7] = x;
-        gameState->artefatosPosY[7] = y;
+        gameState->artefatosPosX[7] = x; gameState->artefatosPosY[7] = y;
+        gameState->startPosX[7] = x; gameState->startPosY[7] = y;
         break;
     case 'G':
-        gameState->artefatosPosX[8] = x;
-        gameState->artefatosPosY[8] = y;
+        gameState->artefatosPosX[8] = x; gameState->artefatosPosY[8] = y;
+        gameState->startPosX[8] = x; gameState->startPosY[8] = y;
         break;
     case 'B':
-        gameState->artefatosPosX[9] = x;
-        gameState->artefatosPosY[9] = y;
+        gameState->artefatosPosX[9] = x; gameState->artefatosPosY[9] = y;
+        gameState->startPosX[9] = x; gameState->startPosY[9] = y;
         break;
     case 'Y':
-        gameState->artefatosPosX[10] = x;
-        gameState->artefatosPosY[10] = y;
+        gameState->artefatosPosX[10] = x; gameState->artefatosPosY[10] = y;
+        gameState->startPosX[10] = x; gameState->startPosY[10] = y;
         break;
     default:
         break;
+    }
+}
+
+void resetaPosicoes(char labirinto[MAP_SIZE][MAP_SIZE], GameState *gameState) {
+    int ids[] = {0, 7, 8, 9, 10}; // PacMan e Fantasmas
+    char symbols[] = {'P', 'R', 'G', 'B', 'Y'};
+    
+    for (int k = 0; k < 1; k++) {
+        int idx = ids[k];
+        int cx = gameState->artefatosPosX[idx];
+        int cy = gameState->artefatosPosY[idx];
+        if (cx >= 0 && cy >= 0 && cx < MAP_SIZE && cy < MAP_SIZE) {
+            if (labirinto[cx][cy] == symbols[k]) {
+                labirinto[cx][cy] = '0'; // limpa
+            }
+        }
+    }
+
+    for (int k = 0; k < 1; k++) {
+        int idx = ids[k];
+        int sx = gameState->startPosX[idx];
+        int sy = gameState->startPosY[idx];
+        if (sx >= 0 && sy >= 0 && sx < MAP_SIZE && sy < MAP_SIZE) {
+            labirinto[sx][sy] = symbols[k];
+            gameState->artefatosPosX[idx] = sx;
+            gameState->artefatosPosY[idx] = sy;
+        }
     }
 }
 

@@ -22,7 +22,6 @@ int desmontaMensagem(const char *mensagem, Mensagem *protocolo);
 void enviaMensagem(Mensagem *mensagem, int soquete, uint8_t *seq);
 void enviarAK(uint8_t seq, int soquete);
 void enviarNAK(uint8_t seq, int soquete);
-// Protótipos de Log
 void init_log(const char *filename);
 void log_print(const char *format, ...);
 
@@ -33,5 +32,6 @@ int verifica_crc8(const uint8_t *dados, int tamanho, uint8_t crc_recebido);
 void printaMensagem(Mensagem *mensagem);
 
 extern int modo_loopback;
+void enviaErro(int soquete);
 
 #endif

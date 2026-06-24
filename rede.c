@@ -105,7 +105,7 @@ int desmontaMensagem(const char *mensagem, Mensagem *protocolo)
 
     if (!verifica_crc8((uint8_t *)&mensagem[3], tamanhoMensagem, crc))
     {
-         fprintf(stderr, "CRC inválido! Mensagem corrompida.\n");
+         fprintf(stderr, "CRC inválido: Mensagem corrompida.\n");
         return 0;
     }
 
@@ -113,7 +113,6 @@ int desmontaMensagem(const char *mensagem, Mensagem *protocolo)
 }
 
 int cria_raw_socket(char* nome_interface_rede) {
-    // Cria arquivo para o socket sem qualquer protocolo
     int soquete = socket(AF_PACKET, SOCK_DGRAM, htons(ETH_P_ALL));
     if (soquete == -1) {
         fprintf(stderr, "Erro ao criar socket: Verifique se você é root!\n");
@@ -323,4 +322,14 @@ Mensagem *criaMensagem()
     mensagem->tamanho       = 0;
     mensagem->dados         = NULL;
     return mensagem;
+}
+
+void enviaErro(int soquete) {
+    Mensagem *msg = criaMensagem();
+    msg->tipo = 15; 
+    msg->tamanho = 0;
+    msg->dados = NULL;
+    uint8_t seq = 0;
+    enviaMensagem(msg, soquete, &seq);
+    free(msg);
 }
