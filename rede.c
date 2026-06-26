@@ -145,6 +145,17 @@ int cria_raw_socket(char* nome_interface_rede, int use_sock_raw) {
     return soquete;
 }
 
+static ssize_t enviar_pacote(int soquete, const void *buf, size_t len) {
+    struct sockaddr_ll addr = {0};
+    socklen_t addr_len = sizeof(addr);
+    if (getsockname(soquete, (struct sockaddr *)&addr, &addr_len) == 0) {
+        addr.sll_halen = 6;
+        memset(addr.sll_addr, 0xFF, 6);
+        return sendto(soquete, buf, len, 0, (struct sockaddr *)&addr, sizeof(addr));
+    }
+    return send(soquete, buf, len, 0);
+}
+
 static char* constroi_frame(Mensagem *mensagem, int frame_index, uint8_t seq_inicial, int num_frames) {
     Mensagem *frame = criaMensagem();
     if (frame_index < num_frames) {
@@ -196,7 +207,7 @@ void enviaMensagem(Mensagem *mensagem, int soquete, uint8_t *seq)
         while (proximo_envio < base + janela_tamanho && proximo_envio < frames_totais) {
             char *raw = constroi_frame(mensagem, proximo_envio, seq_inicial, num_frames);
             int frameTam = TAM_MAXIMO_MENSAGEM + MIN_MENSAGE_SIZE;
-            ssize_t sent = send(soquete, raw, frameTam, 0);
+            ssize_t sent = enviar_pacote(soquete, raw, frameTam);
             if (sent < 0) perror("ERROR: enviaMensagem send");
             
             if (mensagem->tamanho > 0) {
@@ -297,7 +308,7 @@ void enviarAK(uint8_t seq, int soquete)
     ack.tamanho       = 0;
     ack.dados         = NULL;
     char *raw = montaMensagem(&ack);
-    send(soquete, raw, TAM_MAXIMO_MENSAGEM + MIN_MENSAGE_SIZE, 0);
+    enviar_pacote(soquete, raw, TAM_MAXIMO_MENSAGEM + MIN_MENSAGE_SIZE);
 
     free(raw);
 }
@@ -310,7 +321,7 @@ void enviarNAK(uint8_t seq, int soquete)
     nak.tamanho       = 0;
     nak.dados         = NULL;
     char *raw = montaMensagem(&nak);
-    send(soquete, raw, TAM_MAXIMO_MENSAGEM + MIN_MENSAGE_SIZE, 0);
+    enviar_pacote(soquete, raw, TAM_MAXIMO_MENSAGEM + MIN_MENSAGE_SIZE);
 
     free(raw);
 }

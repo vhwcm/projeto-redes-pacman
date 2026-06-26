@@ -9,7 +9,6 @@
 #include <net/if.h>
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <ncurses.h>
 #include <sys/time.h>
 
 #include "Client_socket.h"
@@ -205,6 +204,17 @@ uint8_t* monta_protocolo(Mensagem* msg){
     return protocolo;   
 }
 
+static ssize_t enviar_pacote(int soquete, const void *buf, size_t len) {
+    struct sockaddr_ll addr = {0};
+    socklen_t addr_len = sizeof(addr);
+    if (getsockname(soquete, (struct sockaddr *)&addr, &addr_len) == 0) {
+        addr.sll_halen = 6;
+        memset(addr.sll_addr, 0xFF, 6);
+        return sendto(soquete, buf, len, 0, (struct sockaddr *)&addr, sizeof(addr));
+    }
+    return send(soquete, buf, len, 0);
+}
+
 // Envia mensagem
 void Enviar_p_servidor(int socket, uint8_t tipo, uint8_t sequencia){
      log_print("envio de mensagem, sequencia: %d, tipo: %d\n", sequencia, tipo);
@@ -226,7 +236,7 @@ void Enviar_p_servidor(int socket, uint8_t tipo, uint8_t sequencia){
         perror("ERROR: buffer\n");
         return;
     }
-    if((send(socket, buffer, 35,0) <= 0)){
+    if((enviar_pacote(socket, buffer, 35) <= 0)){
         perror("ERROR: send\n");
         return;
     }
