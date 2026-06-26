@@ -590,8 +590,8 @@ WAIT_FOR_MSG:
             // muda para receber dados
             fclose(arquivo);
             t1++;
-            if(txt == 0){   system("cat TEXTO_2.txt"); remove("TEXTO_2.txt");}
-            else{   system("cat TEXTO_1.txt"); remove("TEXTO_1.txt");}
+            if(txt == 0){   system("less TEXTO_2.txt"); remove("TEXTO_2.txt");}
+            else{   system("less TEXTO_1.txt"); remove("TEXTO_1.txt");}
             if(msg && msg->dados) { free(msg->dados); msg->dados = NULL; }
             if(msg) { free(msg); msg = NULL; }
             goto WAIT_FOR_MSG;            

@@ -1,3 +1,8 @@
+\author{
+Viktor Hugo -- GRR: 20245275\\
+Mauricio Takechi Hirata -- GRR: 20211771
+}
+
 # projeto-redes-pacman
 
 Dúvidas a retirar com o parceiro:
