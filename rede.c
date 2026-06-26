@@ -105,7 +105,7 @@ int desmontaMensagem(const char *mensagem, Mensagem *protocolo)
 
     if (!verifica_crc8((uint8_t *)&mensagem[3], tamanhoMensagem, crc))
     {
-         fprintf(stderr, "CRC inválido: Mensagem corrompida.\n");
+         fprintf(stderr, "CRC inválido: Mensagem corrompdida.\n");
         return 0;
     }
 
@@ -146,14 +146,12 @@ int cria_raw_socket(char* nome_interface_rede, int use_sock_raw) {
 }
 
 static ssize_t enviar_pacote(int soquete, const void *buf, size_t len) {
-    struct sockaddr_ll addr = {0};
+    struct sockaddr_ll addr = {0};  
     socklen_t addr_len = sizeof(addr);
-    if (getsockname(soquete, (struct sockaddr *)&addr, &addr_len) == 0) {
-        addr.sll_halen = 6;
-        memset(addr.sll_addr, 0xFF, 6);
-        return sendto(soquete, buf, len, 0, (struct sockaddr *)&addr, sizeof(addr));
-    }
-    return send(soquete, buf, len, 0);
+    getsockname(soquete, (struct sockaddr *)&addr, &addr_len);
+    addr.sll_halen = 6;
+    memset(addr.sll_addr, 0xFF, 6); // Com código do Broadcast
+    return sendto(soquete, buf, len, 0, (struct sockaddr *)&addr, sizeof(addr));
 }
 
 static char* constroi_frame(Mensagem *mensagem, int frame_index, uint8_t seq_inicial, int num_frames) {
@@ -184,12 +182,12 @@ void enviaMensagem(Mensagem *mensagem, int soquete, uint8_t *seq)
 {
     int totalDados = mensagem->tamanho;
     int num_frames, frames_totais;
-    if (totalDados == 0) {
+    if (totalDados == 0) { // envia apenas mensagem de finalização
         num_frames = 1;
         frames_totais = 1;
     } else {
-        num_frames = (totalDados + TAM_MAXIMO_MENSAGEM - 1) / TAM_MAXIMO_MENSAGEM;
-        frames_totais = num_frames + 1;
+        num_frames = (totalDados + TAM_MAXIMO_MENSAGEM - 1) / TAM_MAXIMO_MENSAGEM; // teto para cima
+        frames_totais = num_frames + 1; // mensagem final
     }
 
     int base = 0;
@@ -275,28 +273,6 @@ void printaMensagem(Mensagem *mensagem)
         log_print("CRC: 00\n");
     }
     log_print("================\n");
-}
-
-void exibe_mensagem(Mensagem m)
-{
-    log_print("--- ITENS DA MENSAGEM ---\n");
-    log_print("Tamanho: %u\n", m.tamanho);
-    log_print("Num sequencia: %u\n", m.num_sequencia);
-    log_print("Tipo: %u\n", m.tipo);
-
-    if (m.tamanho > 0 && m.dados != NULL) {
-        log_print("Dados: ");
-        for (uint32_t i = 0; i < m.tamanho; i++) {
-            log_print("%02X ", m.dados[i]);
-        }
-        log_print("\n");
-        uint8_t crc = calcula_crc8(m.dados, m.tamanho);
-        log_print("CRC: %02X\n", crc);
-    } else {
-        log_print("Dados: (vazio)\n");
-        log_print("CRC: 00\n");
-    }
-    log_print("-------------------------\n");
 }
 
 

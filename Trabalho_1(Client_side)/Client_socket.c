@@ -207,12 +207,10 @@ uint8_t* monta_protocolo(Mensagem* msg){
 static ssize_t enviar_pacote(int soquete, const void *buf, size_t len) {
     struct sockaddr_ll addr = {0};
     socklen_t addr_len = sizeof(addr);
-    if (getsockname(soquete, (struct sockaddr *)&addr, &addr_len) == 0) {
-        addr.sll_halen = 6;
-        memset(addr.sll_addr, 0xFF, 6);
-        return sendto(soquete, buf, len, 0, (struct sockaddr *)&addr, sizeof(addr));
-    }
-    return send(soquete, buf, len, 0);
+    getsockname(soquete, (struct sockaddr *)&addr, &addr_len);
+    addr.sll_halen = 6;
+    memset(addr.sll_addr, 0xFF, 6);
+    return sendto(soquete, buf, len, 0, (struct sockaddr *)&addr, sizeof(addr));
 }
 
 // Envia mensagem
@@ -416,7 +414,12 @@ WAIT_FOR_MSG:
                         Enviar_p_servidor(socket, NACK, seq);   
                         slide = 0;
                     } else {
-                        log_print("ignorado pacote antigo %d (esperava %d)\n", msg->sequencia, seq);
+                        log_print("ignorado pacote antigo %d (esperava %d) - enviando ACK confirmatório\n", msg->sequencia, seq);
+                        if (seq == 0) {
+                            Enviar_p_servidor(socket, ACK, 63);
+                        } else {
+                            Enviar_p_servidor(socket, ACK, seq - 1);
+                        }
                     }
                 }
                 
@@ -425,14 +428,13 @@ WAIT_FOR_MSG:
                     n = recvfrom(socket, pacote, 35, 0, (struct sockaddr *)&sll, &sll_len);
                     if (n <= 0) break;
                     if (sll.sll_pkttype == PACKET_OUTGOING) continue;
-                    if (n >= 35 && pacote[0] == MARCA_INICIO) {
-                        int tipo_pacote = pacote[2] & 0b11111;
-                        if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO || 
-                            tipo_pacote == ESQUERDA || tipo_pacote == DIREITA || tipo_pacote == 0 || tipo_pacote == 1) {
-                            fflush(stdout);
-                            usleep(10000);
-                            continue; 
-                        }
+                    if (n < 35 || pacote[0] != MARCA_INICIO) continue;
+                    int tipo_pacote = pacote[2] & 0b11111;
+                    if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO ||
+                        tipo_pacote == ESQUERDA || tipo_pacote == DIREITA || tipo_pacote == 0 || tipo_pacote == 1) {
+                        fflush(stdout);
+                        usleep(10000);
+                        continue;
                     }
                     break;
                 }
@@ -445,14 +447,13 @@ WAIT_FOR_MSG:
                         n = recvfrom(socket, pacote, 35, 0, (struct sockaddr *)&sll, &sll_len);
                         if (n <= 0) break;
                         if (sll.sll_pkttype == PACKET_OUTGOING) continue;
-                        if (n >= 35 && pacote[0] == MARCA_INICIO) {
-                            int tipo_pacote = pacote[2] & 0b11111;
-                            if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO || 
-                                tipo_pacote == ESQUERDA || tipo_pacote == DIREITA || tipo_pacote == 0 || tipo_pacote == 1) {
-                                fflush(stdout);
-                                usleep(10000);
-                                continue; 
-                            }
+                        if (n < 35 || pacote[0] != MARCA_INICIO) continue;
+                        int tipo_pacote = pacote[2] & 0b11111;
+                        if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO ||
+                            tipo_pacote == ESQUERDA || tipo_pacote == DIREITA || tipo_pacote == 0 || tipo_pacote == 1) {
+                            fflush(stdout);
+                            usleep(10000);
+                            continue;
                         }
                         break;
                     }
@@ -533,7 +534,12 @@ WAIT_FOR_MSG:
                         Enviar_p_servidor(socket, NACK, seq);   
                         slide = 0;
                     } else {
-                        log_print("ignorado pacote antigo %d (esperava %d)\n", msg->sequencia, seq);
+                        log_print("ignorado pacote antigo %d (esperava %d) - enviando ACK confirmatório\n", msg->sequencia, seq);
+                        if (seq == 0) {
+                            Enviar_p_servidor(socket, ACK, 63);
+                        } else {
+                            Enviar_p_servidor(socket, ACK, seq - 1);
+                        }
                     }
                 }
 
@@ -542,14 +548,13 @@ WAIT_FOR_MSG:
                     n = recvfrom(socket, pacote, 35, 0, (struct sockaddr *)&sll, &sll_len);
                     if (n <= 0) break;
                     if (sll.sll_pkttype == PACKET_OUTGOING) continue;
-                    if (n >= 35 && pacote[0] == MARCA_INICIO) {
-                        int tipo_pacote = pacote[2] & 0b11111;
-                        if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO || 
-                            tipo_pacote == ESQUERDA || tipo_pacote == DIREITA || tipo_pacote == 0 || tipo_pacote == 1) {
-                            fflush(stdout);
-                            usleep(10000);
-                            continue; 
-                        }
+                    if (n < 35 || pacote[0] != MARCA_INICIO) continue;
+                    int tipo_pacote = pacote[2] & 0b11111;
+                    if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO ||
+                        tipo_pacote == ESQUERDA || tipo_pacote == DIREITA || tipo_pacote == 0 || tipo_pacote == 1) {
+                        fflush(stdout);
+                        usleep(10000);
+                        continue;
                     }
                     break;
                 }
@@ -561,14 +566,13 @@ WAIT_FOR_MSG:
                         n = recvfrom(socket, pacote, 35, 0, (struct sockaddr *)&sll, &sll_len);
                         if (n <= 0) break;
                         if (sll.sll_pkttype == PACKET_OUTGOING) continue;
-                        if (n >= 35 && pacote[0] == MARCA_INICIO) {
-                            int tipo_pacote = pacote[2] & 0b11111;
-                            if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO || 
-                                tipo_pacote == ESQUERDA || tipo_pacote == DIREITA || tipo_pacote == 0 || tipo_pacote == 1) {
-                                fflush(stdout);
-                                usleep(10000);
-                                continue; 
-                            }
+                        if (n < 35 || pacote[0] != MARCA_INICIO) continue;
+                        int tipo_pacote = pacote[2] & 0b11111;
+                        if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO ||
+                            tipo_pacote == ESQUERDA || tipo_pacote == DIREITA || tipo_pacote == 0 || tipo_pacote == 1) {
+                            fflush(stdout);
+                            usleep(10000);
+                            continue;
                         }
                         break;
                     }
@@ -646,7 +650,12 @@ WAIT_FOR_MSG:
                         Enviar_p_servidor(socket, NACK, seq);   
                         slide = 0;
                     } else {
-                        log_print("ignorado pacote antigo %d (esperava %d)\n", msg->sequencia, seq);
+                        log_print("ignorado pacote antigo %d (esperava %d) - enviando ACK confirmatório\n", msg->sequencia, seq);
+                        if (seq == 0) {
+                            Enviar_p_servidor(socket, ACK, 63);
+                        } else {
+                            Enviar_p_servidor(socket, ACK, seq - 1);
+                        }
                     }
                 }
 
@@ -655,14 +664,13 @@ WAIT_FOR_MSG:
                     n = recvfrom(socket, pacote, 35, 0, (struct sockaddr *)&sll, &sll_len);
                     if (n <= 0) break;
                     if (sll.sll_pkttype == PACKET_OUTGOING) continue;
-                    if (n >= 35 && pacote[0] == MARCA_INICIO) {
-                        int tipo_pacote = pacote[2] & 0b11111;
-                        if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO || 
-                            tipo_pacote == ESQUERDA || tipo_pacote == DIREITA || tipo_pacote == 0 || tipo_pacote == 1) {
-                            fflush(stdout);
-                            usleep(10000);
-                            continue; 
-                        }
+                    if (n < 35 || pacote[0] != MARCA_INICIO) continue;
+                    int tipo_pacote = pacote[2] & 0b11111;
+                    if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO ||
+                        tipo_pacote == ESQUERDA || tipo_pacote == DIREITA || tipo_pacote == 0 || tipo_pacote == 1) {
+                        fflush(stdout);
+                        usleep(10000);
+                        continue;
                     }
                     break;
                 }
@@ -674,14 +682,13 @@ WAIT_FOR_MSG:
                         n = recvfrom(socket, pacote, 35, 0, (struct sockaddr *)&sll, &sll_len);
                         if (n <= 0) break;
                         if (sll.sll_pkttype == PACKET_OUTGOING) continue;
-                        if (n >= 35 && pacote[0] == MARCA_INICIO) {
-                            int tipo_pacote = pacote[2] & 0b11111;
-                            if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO || 
-                                tipo_pacote == ESQUERDA || tipo_pacote == DIREITA || tipo_pacote == 0 || tipo_pacote == 1) {
-                                fflush(stdout);
-                                usleep(10000);
-                                continue; 
-                            }
+                        if (n < 35 || pacote[0] != MARCA_INICIO) continue;
+                        int tipo_pacote = pacote[2] & 0b11111;
+                        if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO ||
+                            tipo_pacote == ESQUERDA || tipo_pacote == DIREITA || tipo_pacote == 0 || tipo_pacote == 1) {
+                            fflush(stdout);
+                            usleep(10000);
+                            continue;
                         }
                         break;
                     }
@@ -759,7 +766,12 @@ WAIT_FOR_MSG:
                         Enviar_p_servidor(socket, NACK, seq);   
                         slide = 0;
                     } else {
-                        log_print("ignorado pacote antigo %d (esperava %d)\n", msg->sequencia, seq);
+                        log_print("ignorado pacote antigo %d (esperava %d) - enviando ACK confirmatório\n", msg->sequencia, seq);
+                        if (seq == 0) {
+                            Enviar_p_servidor(socket, ACK, 63);
+                        } else {
+                            Enviar_p_servidor(socket, ACK, seq - 1);
+                        }
                     }
                 }
 
@@ -768,14 +780,13 @@ WAIT_FOR_MSG:
                     n = recvfrom(socket, pacote, 35, 0, (struct sockaddr *)&sll, &sll_len);
                     if (n <= 0) break;
                     if (sll.sll_pkttype == PACKET_OUTGOING) continue;
-                    if (n >= 35 && pacote[0] == MARCA_INICIO) {
-                        int tipo_pacote = pacote[2] & 0b11111;
-                        if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO || 
-                            tipo_pacote == ESQUERDA || tipo_pacote == DIREITA || tipo_pacote == 0 || tipo_pacote == 1) {
-                            fflush(stdout);
-                            usleep(10000);
-                            continue; 
-                        }
+                    if (n < 35 || pacote[0] != MARCA_INICIO) continue;
+                    int tipo_pacote = pacote[2] & 0b11111;
+                    if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO ||
+                        tipo_pacote == ESQUERDA || tipo_pacote == DIREITA || tipo_pacote == 0 || tipo_pacote == 1) {
+                        fflush(stdout);
+                        usleep(10000);
+                        continue;
                     }
                     break;
                 }
@@ -787,14 +798,13 @@ WAIT_FOR_MSG:
                         n = recvfrom(socket, pacote, 35, 0, (struct sockaddr *)&sll, &sll_len);
                         if (n <= 0) break;
                         if (sll.sll_pkttype == PACKET_OUTGOING) continue;
-                        if (n >= 35 && pacote[0] == MARCA_INICIO) {
-                            int tipo_pacote = pacote[2] & 0b11111;
-                            if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO || 
-                                tipo_pacote == ESQUERDA || tipo_pacote == DIREITA || tipo_pacote == 0 || tipo_pacote == 1) {
-                                fflush(stdout);
-                                usleep(10000);
-                                continue; 
-                            }
+                        if (n < 35 || pacote[0] != MARCA_INICIO) continue;
+                        int tipo_pacote = pacote[2] & 0b11111;
+                        if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO ||
+                            tipo_pacote == ESQUERDA || tipo_pacote == DIREITA || tipo_pacote == 0 || tipo_pacote == 1) {
+                            fflush(stdout);
+                            usleep(10000);
+                            continue;
                         }
                         break;
                     }
@@ -873,7 +883,12 @@ WAIT_FOR_MSG:
                         Enviar_p_servidor(socket, NACK, seq);   
                         slide = 0;
                     } else {
-                        log_print("ignorado pacote antigo %d (esperava %d)\n", msg->sequencia, seq);
+                        log_print("ignorado pacote antigo %d (esperava %d) - enviando ACK confirmatório\n", msg->sequencia, seq);
+                        if (seq == 0) {
+                            Enviar_p_servidor(socket, ACK, 63);
+                        } else {
+                            Enviar_p_servidor(socket, ACK, seq - 1);
+                        }
                     }
                 }
 
@@ -882,14 +897,13 @@ WAIT_FOR_MSG:
                     n = recvfrom(socket, pacote, 35, 0, (struct sockaddr *)&sll, &sll_len);
                     if (n <= 0) break;
                     if (sll.sll_pkttype == PACKET_OUTGOING) continue;
-                    if (n >= 35 && pacote[0] == MARCA_INICIO) {
-                        int tipo_pacote = pacote[2] & 0b11111;
-                        if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO || 
-                            tipo_pacote == ESQUERDA || tipo_pacote == DIREITA || tipo_pacote == 0 || tipo_pacote == 1) {
-                            fflush(stdout);
-                            usleep(10000);
-                            continue; 
-                        }
+                    if (n < 35 || pacote[0] != MARCA_INICIO) continue;
+                    int tipo_pacote = pacote[2] & 0b11111;
+                    if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO ||
+                        tipo_pacote == ESQUERDA || tipo_pacote == DIREITA || tipo_pacote == 0 || tipo_pacote == 1) {
+                        fflush(stdout);
+                        usleep(10000);
+                        continue;
                     }
                     break;
                 }
@@ -901,14 +915,13 @@ WAIT_FOR_MSG:
                         n = recvfrom(socket, pacote, 35, 0, (struct sockaddr *)&sll, &sll_len);
                         if (n <= 0) break;
                         if (sll.sll_pkttype == PACKET_OUTGOING) continue;
-                        if (n >= 35 && pacote[0] == MARCA_INICIO) {
-                            int tipo_pacote = pacote[2] & 0b11111;
-                            if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO || 
-                                tipo_pacote == ESQUERDA || tipo_pacote == DIREITA || tipo_pacote == 0 || tipo_pacote == 1) {
-                                fflush(stdout);
-                                usleep(10000);
-                                continue; 
-                            }
+                        if (n < 35 || pacote[0] != MARCA_INICIO) continue;
+                        int tipo_pacote = pacote[2] & 0b11111;
+                        if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO ||
+                            tipo_pacote == ESQUERDA || tipo_pacote == DIREITA || tipo_pacote == 0 || tipo_pacote == 1) {
+                            fflush(stdout);
+                            usleep(10000);
+                            continue;
                         }
                         break;
                     }
