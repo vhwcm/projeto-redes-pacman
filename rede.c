@@ -111,7 +111,8 @@ int desmontaMensagem(const char *mensagem, Mensagem *protocolo)
 
     return 1;
 }
-int cria_raw_socket(char* nome_interface_rede) {
+
+int cria_raw_socket(const char* nome_interface_rede) {
     // Cria arquivo para o socket sem qualquer protocolo
     int soquete = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
     if (soquete == -1) {

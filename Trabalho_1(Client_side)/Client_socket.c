@@ -59,18 +59,16 @@ void configurar_timeout(int soquete, int timeoutMillis){
         (char*) &timeout, sizeof(timeout)
     );
 }
-
-int cria_raw_socket(const char* nome_interface_rede, int use_sock_raw) {
-    // Cria o socket
-    int tipo_socket = use_sock_raw ? SOCK_RAW : SOCK_DGRAM;
-    int soquete = socket(AF_PACKET, tipo_socket, htons(ETH_P_ALL));
+int cria_raw_socket(const char* nome_interface_rede) {
+    // Cria arquivo para o socket sem qualquer protocolo
+    int soquete = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
     if (soquete == -1) {
         fprintf(stderr, "Erro ao criar socket: Verifique se você é root!\n");
         exit(-1);
     }
- 
+
     int ifindex = if_nametoindex(nome_interface_rede);
- 
+
     struct sockaddr_ll endereco = {0};
     endereco.sll_family = AF_PACKET;
     endereco.sll_protocol = htons(ETH_P_ALL);
@@ -80,7 +78,7 @@ int cria_raw_socket(const char* nome_interface_rede, int use_sock_raw) {
         fprintf(stderr, "Erro ao fazer bind no socket\n");
         exit(-1);
     }
- 
+
     struct packet_mreq mr = {0};
     mr.mr_ifindex = ifindex;
     mr.mr_type = PACKET_MR_PROMISC;
@@ -90,7 +88,7 @@ int cria_raw_socket(const char* nome_interface_rede, int use_sock_raw) {
             "Verifique se a interface de rede foi especificada corretamente.\n");
         exit(-1);
     }
- 
+
     return soquete;
 }
 

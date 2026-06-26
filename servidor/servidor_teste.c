@@ -279,19 +279,13 @@ static int processa(uint8_t tipo, uint8_t *dados, uint32_t tam) {
 
 int main(int argc, char *argv[]) {
     if (argc < 2) {
-        fprintf(stderr, "Uso: %s <interface> [--raw]\n", argv[0]);
+        fprintf(stderr, "Uso: %s <interface>\n", argv[0]);
         return 1;
-    }
-
-    int use_sock_raw = 0;
-    if (argc > 1 && strcmp(argv[argc-1], "--raw") == 0) {
-        use_sock_raw = 1;
-        argc--;
     }
 
     char *iface = argv[1];
     modo_loopback  = (strcmp(iface, "lo") == 0);
-    soquete_global = cria_raw_socket(iface, use_sock_raw);
+    soquete_global = cria_raw_socket(iface);
 
     int rcvbuf = 8 * 1024 * 1024;
     setsockopt(soquete_global, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf));

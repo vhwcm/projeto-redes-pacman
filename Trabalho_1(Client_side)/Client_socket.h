@@ -39,7 +39,7 @@ typedef struct
 
 void configurar_timeout(int soquete, int timeoutMillis);
 
-int cria_raw_socket(const char* nome_interface_rede, int use_sock_raw);
+int cria_raw_socket(const char* nome_interface_rede);
 
 Mensagem* cria_msg(uint8_t tipo, uint8_t sequencia);
 
