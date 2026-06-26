@@ -11,7 +11,7 @@ typedef struct
     char labirinto[MAP_SIZE][MAP_SIZE];
     int artefatosPosX[12]; // '-1' representa que já foi coletado
     int artefatosPosY[12]; // '-1' representa que já foi coletado
-    int startPosX[12];
+    int startPosX[12];  // usado na colisão com os fantasmas
     int startPosY[12];
     int vidas;
     int movimentos_totais;

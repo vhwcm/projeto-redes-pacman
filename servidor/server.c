@@ -99,14 +99,12 @@ int main(int argc, char *argv[])
     while (1)
     {
 
-        struct sockaddr_ll from;
-        socklen_t fromlen = sizeof(from);
-        ssize_t bytes = recvfrom(soquete, buffer, sizeof(buffer), 0, (struct sockaddr *)&from, &fromlen);
+        ssize_t bytes = recv(soquete, buffer, sizeof(buffer), 0);
 
         long long agora = timestamp_ms();
         if (agora - ultimo_ack_ts >= ACK_TIMEOUT_MS && ack_counter > 0) {
             log_print("Timeout de 200ms. Enviando ACK para seq %d\n", (expected_seq_recv + 63) % 64);
-            enviarAK((expected_seq_recv + 63) % 64, soquete);
+            enviarAK((expected_seq_recv + 63) % 64, soquete); // importante para casi retire o cabo de rede e evita erros
             ack_counter = 0;
             ultimo_ack_ts = agora;
         }
@@ -327,11 +325,9 @@ void movimentaPacMan(int soquete, int tipo, char labirinto[MAP_SIZE][MAP_SIZE], 
     if (elem == 'R' || elem == 'G' || elem == 'B' || elem == 'Y') {
         log_print("Pacman colidiu com o fantasma '%c'!\n", elem);
         enviarArquivo(soquete, "BOO.png", 8);
-        usleep(100000);
         gameState->vidas--;
         if (gameState->vidas <= 0) {
             enviaGameOver(soquete);
-            usleep(100000);
             exit(0);
         } else {
             resetaPosicoes(labirinto, gameState);

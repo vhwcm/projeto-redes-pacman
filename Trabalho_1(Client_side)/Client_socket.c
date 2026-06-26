@@ -205,12 +205,7 @@ uint8_t* monta_protocolo(Mensagem* msg){
 }
 
 static ssize_t enviar_pacote(int soquete, const void *buf, size_t len) {
-    struct sockaddr_ll addr = {0};
-    socklen_t addr_len = sizeof(addr);
-    getsockname(soquete, (struct sockaddr *)&addr, &addr_len);
-    addr.sll_halen = 6;
-    memset(addr.sll_addr, 0xFF, 6);
-    return sendto(soquete, buf, len, 0, (struct sockaddr *)&addr, sizeof(addr));
+    return send(soquete, buf, len, 0);
 }
 
 // Envia mensagem
@@ -313,13 +308,13 @@ int Receber_d_servidor(int socket, char game_map[MAP_SIZE * MAP_SIZE]){
     if (!buffer) { Enviar_p_servidor(socket, ERROS, 0); exit(1); }
     char *pacote = malloc(35);
     if (!pacote) { Enviar_p_servidor(socket, ERROS, 0); exit(1); }
-    struct sockaddr_ll sll;
-    socklen_t sll_len = sizeof(sll);
+    // struct sockaddr_ll sll;
+    // socklen_t sll_len = sizeof(sll);
     log_print("Sequencia esperada %d\n", seq);
     int n;
 WAIT_FOR_MSG:
     while (1) {
-        n = recvfrom(socket, pacote, 35, 0, (struct sockaddr *)&sll, &sll_len);
+        n = recv(socket, pacote, 35, 0);
         
         if (n < 0) {
             free(buffer);
@@ -328,7 +323,7 @@ WAIT_FOR_MSG:
         }
 
         if (n < 35) continue;
-        if (sll.sll_pkttype == PACKET_OUTGOING) continue; // Ignora pacotes enviados por si mesmo
+        // if (sll.sll_pkttype == PACKET_OUTGOING) continue; // Ignora pacotes enviados por si mesmo
         if (pacote[0] == MARCA_INICIO) {
             int tipo_pacote = pacote[2] & 0b11111;
             // Se for um pacote que o próprio cliente envia (eco da rede), descartamos imediatamente
@@ -425,9 +420,9 @@ WAIT_FOR_MSG:
                 
                 DATA:
                 while (1) {
-                    n = recvfrom(socket, pacote, 35, 0, (struct sockaddr *)&sll, &sll_len);
+                    n = recv(socket, pacote, 35, 0);
                     if (n <= 0) break;
-                    if (sll.sll_pkttype == PACKET_OUTGOING) continue;
+                    // if (sll.sll_pkttype == PACKET_OUTGOING) continue;
                     if (n < 35 || pacote[0] != MARCA_INICIO) continue;
                     int tipo_pacote = pacote[2] & 0b11111;
                     if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO ||
@@ -444,9 +439,9 @@ WAIT_FOR_MSG:
                      log_print("ali\n");
                     Enviar_p_servidor(socket, NACK, seq);   
                     while (1) {
-                        n = recvfrom(socket, pacote, 35, 0, (struct sockaddr *)&sll, &sll_len);
+                        n = recv(socket, pacote, 35, 0);
                         if (n <= 0) break;
-                        if (sll.sll_pkttype == PACKET_OUTGOING) continue;
+                        // if (sll.sll_pkttype == PACKET_OUTGOING) continue;
                         if (n < 35 || pacote[0] != MARCA_INICIO) continue;
                         int tipo_pacote = pacote[2] & 0b11111;
                         if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO ||
@@ -545,9 +540,9 @@ WAIT_FOR_MSG:
 
                 TEXT:
                 while (1) {
-                    n = recvfrom(socket, pacote, 35, 0, (struct sockaddr *)&sll, &sll_len);
+                    n = recv(socket, pacote, 35, 0);
                     if (n <= 0) break;
-                    if (sll.sll_pkttype == PACKET_OUTGOING) continue;
+                    // if (sll.sll_pkttype == PACKET_OUTGOING) continue;
                     if (n < 35 || pacote[0] != MARCA_INICIO) continue;
                     int tipo_pacote = pacote[2] & 0b11111;
                     if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO ||
@@ -563,9 +558,9 @@ WAIT_FOR_MSG:
                     // erro na desmontagem da msg
                     Enviar_p_servidor(socket, NACK, seq);   
                     while (1) {
-                        n = recvfrom(socket, pacote, 35, 0, (struct sockaddr *)&sll, &sll_len);
+                        n = recv(socket, pacote, 35, 0);
                         if (n <= 0) break;
-                        if (sll.sll_pkttype == PACKET_OUTGOING) continue;
+                        // if (sll.sll_pkttype == PACKET_OUTGOING) continue;
                         if (n < 35 || pacote[0] != MARCA_INICIO) continue;
                         int tipo_pacote = pacote[2] & 0b11111;
                         if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO ||
@@ -661,9 +656,9 @@ WAIT_FOR_MSG:
 
                 IMAGE:
                 while (1) {
-                    n = recvfrom(socket, pacote, 35, 0, (struct sockaddr *)&sll, &sll_len);
+                    n = recv(socket, pacote, 35, 0);
                     if (n <= 0) break;
-                    if (sll.sll_pkttype == PACKET_OUTGOING) continue;
+                    // if (sll.sll_pkttype == PACKET_OUTGOING) continue;
                     if (n < 35 || pacote[0] != MARCA_INICIO) continue;
                     int tipo_pacote = pacote[2] & 0b11111;
                     if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO ||
@@ -679,9 +674,9 @@ WAIT_FOR_MSG:
                     // erro na desmontagem da msg
                     Enviar_p_servidor(socket, NACK, seq);   
                     while (1) {
-                        n = recvfrom(socket, pacote, 35, 0, (struct sockaddr *)&sll, &sll_len);
+                        n = recv(socket, pacote, 35, 0);
                         if (n <= 0) break;
-                        if (sll.sll_pkttype == PACKET_OUTGOING) continue;
+                        // if (sll.sll_pkttype == PACKET_OUTGOING) continue;
                         if (n < 35 || pacote[0] != MARCA_INICIO) continue;
                         int tipo_pacote = pacote[2] & 0b11111;
                         if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO ||
@@ -777,9 +772,9 @@ WAIT_FOR_MSG:
 
                 VIDEO:
                 while (1) {
-                    n = recvfrom(socket, pacote, 35, 0, (struct sockaddr *)&sll, &sll_len);
+                    n = recv(socket, pacote, 35, 0);
                     if (n <= 0) break;
-                    if (sll.sll_pkttype == PACKET_OUTGOING) continue;
+                    // if (sll.sll_pkttype == PACKET_OUTGOING) continue;
                     if (n < 35 || pacote[0] != MARCA_INICIO) continue;
                     int tipo_pacote = pacote[2] & 0b11111;
                     if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO ||
@@ -795,9 +790,9 @@ WAIT_FOR_MSG:
                     // erro na desmontagem da msg
                     Enviar_p_servidor(socket, NACK, seq);   
                     while (1) {
-                        n = recvfrom(socket, pacote, 35, 0, (struct sockaddr *)&sll, &sll_len);
+                        n = recv(socket, pacote, 35, 0);
                         if (n <= 0) break;
-                        if (sll.sll_pkttype == PACKET_OUTGOING) continue;
+                        // if (sll.sll_pkttype == PACKET_OUTGOING) continue;
                         if (n < 35 || pacote[0] != MARCA_INICIO) continue;
                         int tipo_pacote = pacote[2] & 0b11111;
                         if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO ||
@@ -894,9 +889,9 @@ WAIT_FOR_MSG:
 
                 FANT:
                 while (1) {
-                    n = recvfrom(socket, pacote, 35, 0, (struct sockaddr *)&sll, &sll_len);
+                    n = recv(socket, pacote, 35, 0);
                     if (n <= 0) break;
-                    if (sll.sll_pkttype == PACKET_OUTGOING) continue;
+                    // if (sll.sll_pkttype == PACKET_OUTGOING) continue;
                     if (n < 35 || pacote[0] != MARCA_INICIO) continue;
                     int tipo_pacote = pacote[2] & 0b11111;
                     if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO ||
@@ -912,9 +907,9 @@ WAIT_FOR_MSG:
                     // erro na desmontagem da msg
                     Enviar_p_servidor(socket, NACK, seq);   
                     while (1) {
-                        n = recvfrom(socket, pacote, 35, 0, (struct sockaddr *)&sll, &sll_len);
+                        n = recv(socket, pacote, 35, 0);
                         if (n <= 0) break;
-                        if (sll.sll_pkttype == PACKET_OUTGOING) continue;
+                        // if (sll.sll_pkttype == PACKET_OUTGOING) continue;
                         if (n < 35 || pacote[0] != MARCA_INICIO) continue;
                         int tipo_pacote = pacote[2] & 0b11111;
                         if ( tipo_pacote == CIMA || tipo_pacote == 3 || tipo_pacote == BAIXO ||

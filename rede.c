@@ -23,7 +23,7 @@ void init_log(const char *filename) {
 void log_print(const char *format, ...) {
     va_list args;
     va_start(args, format);
-    vprintf(format, args);
+    vprintf(format, args); // imprime de forma formatada no terminal
     va_end(args);
 
     if (log_file) {
@@ -105,7 +105,7 @@ int desmontaMensagem(const char *mensagem, Mensagem *protocolo)
 
     if (!verifica_crc8((uint8_t *)&mensagem[3], tamanhoMensagem, crc))
     {
-         fprintf(stderr, "CRC inválido: Mensagem corrompdida.\n");
+         fprintf(stderr, "CRC inválido: Mensagem corrompdida.\n"); // falar para o professor oq deu aqui
         return 0;
     }
 
@@ -146,19 +146,14 @@ int cria_raw_socket(char* nome_interface_rede, int use_sock_raw) {
 }
 
 static ssize_t enviar_pacote(int soquete, const void *buf, size_t len) {
-    struct sockaddr_ll addr = {0};  
-    socklen_t addr_len = sizeof(addr);
-    getsockname(soquete, (struct sockaddr *)&addr, &addr_len);
-    addr.sll_halen = 6;
-    memset(addr.sll_addr, 0xFF, 6); // Com código do Broadcast
-    return sendto(soquete, buf, len, 0, (struct sockaddr *)&addr, sizeof(addr));
+    return send(soquete, buf, len, 0);
 }
 
 static char* constroi_frame(Mensagem *mensagem, int frame_index, uint8_t seq_inicial, int num_frames) {
     Mensagem *frame = criaMensagem();
     if (frame_index < num_frames) {
         int offset = frame_index * TAM_MAXIMO_MENSAGEM;
-        int chunkSize = mensagem->tamanho - offset;
+        int chunkSize = mensagem->tamanho - offset; // quanto falta da mensagem
         if (chunkSize > TAM_MAXIMO_MENSAGEM)
             chunkSize = TAM_MAXIMO_MENSAGEM;
         
@@ -202,6 +197,7 @@ void enviaMensagem(Mensagem *mensagem, int soquete, uint8_t *seq)
 
     while (base < frames_totais) {
         // verifica se há espaço na janela e não acabou os frames ainda.
+        // envia janela
         while (proximo_envio < base + janela_tamanho && proximo_envio < frames_totais) {
             char *raw = constroi_frame(mensagem, proximo_envio, seq_inicial, num_frames);
             int frameTam = TAM_MAXIMO_MENSAGEM + MIN_MENSAGE_SIZE;
@@ -211,7 +207,7 @@ void enviaMensagem(Mensagem *mensagem, int soquete, uint8_t *seq)
             if (mensagem->tamanho > 0) {
                 float pct = ((float)(proximo_envio + 1) / frames_totais) * 100.0f;
                 log_print("Enviando pacote absoluto %d de %d (%.1f%% concluído)\n", proximo_envio + 1, frames_totais, pct);
-            }
+            } // printando absoluta para ficar mais fácil de ver
             
             free(raw);
             proximo_envio++;
@@ -219,17 +215,18 @@ void enviaMensagem(Mensagem *mensagem, int soquete, uint8_t *seq)
 
         char buffer[TAM_MAXIMO_MENSAGEM + MIN_MENSAGE_SIZE + 500];
         Mensagem protocolo;
-        
+
+        // espera ak ou nak
         int bytes_recebidos = recv(soquete, buffer, TAM_MAXIMO_MENSAGEM + MIN_MENSAGE_SIZE + 50, 0);
         if (bytes_recebidos > 0) {
             if (desmontaMensagem(buffer, &protocolo)) {
                 if (protocolo.tipo == 0) {
                     printf("ack recebido para a sequencia %d\n", protocolo.num_sequencia);
                     uint8_t ack_seq = protocolo.num_sequencia;
-                    uint8_t seq_base = (seq_inicial + base) % 64;
+                    uint8_t seq_base = (seq_inicial + base) % 64; // aumenta a sequencia
                     int diff = (ack_seq - seq_base + 64) % 64;
                     if (diff >= 0 && diff < janela_tamanho) {
-                        base = base + diff + 1;
+                        base = base + diff + 1; // aumenta a base da janela
                     }
                 } else if (protocolo.tipo == 1) {
                     printf("ack recebido para a sequencia %d\n", protocolo.num_sequencia);
@@ -238,7 +235,7 @@ void enviaMensagem(Mensagem *mensagem, int soquete, uint8_t *seq)
                     int diff = (nak_seq - seq_base + 64) % 64;
                     if (diff >= 0 && diff < janela_tamanho) {
                         base = base + diff;
-                        proximo_envio = base;
+                        proximo_envio = base; // volta para a base da janela
                     }
                 }
                 if (protocolo.dados) free(protocolo.dados);
@@ -248,7 +245,7 @@ void enviaMensagem(Mensagem *mensagem, int soquete, uint8_t *seq)
         }
     }
     
-    *seq = (seq_inicial + frames_totais) % 64;
+    *seq = (seq_inicial + frames_totais) % 64; // atualiza sequencia global
 }
 
 

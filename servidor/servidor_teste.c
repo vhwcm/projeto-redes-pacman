@@ -88,15 +88,12 @@ static int recebe_mensagem(int timeout_ms, uint8_t *tipo_out, uint8_t **dados_ou
 
     long long inicio = ts_ms();
     while (ts_ms() - inicio < timeout_ms) {
-        struct sockaddr_ll from;
-        socklen_t flen = sizeof(from);
-        ssize_t bytes = recvfrom(soquete_global, buf, sizeof(buf), 0,
-                                  (struct sockaddr *)&from, &flen);
+        ssize_t bytes = recv(soquete_global, buf, sizeof(buf), 0);
         if (bytes <= 0) continue;
         
         // Atualiza o timer para nao dar timeout enquanto estiver ativamente recebendo pedacos grandes (como um MP4)
         inicio = ts_ms();
-        if (modo_loopback && from.sll_pkttype == PACKET_OUTGOING) continue;
+        // if (modo_loopback && from.sll_pkttype == PACKET_OUTGOING) continue;
 
         for (int i = 0; i < (int)bytes; i++) {
             if ((unsigned char)buf[i] != MARCA_INICIO) continue;
