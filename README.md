@@ -3,12 +3,13 @@
 Este projeto consiste na implementação de um jogo de Pacman remoto jogado "no escuro", utilizando uma arquitetura cliente-servidor. A comunicação é realizada diretamente na **Camada de Enlace (Layer 2)** através de **Raw Sockets**, utilizando um protocolo próprio e um controle de fluxo baseado em **Janela Deslizante** (Sliding Window).
 
 ---
-
 ## 👥 Autores
 * **Viktor Hugo** — GRR: 20245275
 * **Maurício Takechi Hirata** — GRR: 20211771
-
 ---
+
+<img width="1462" height="927" alt="Captura de tela de 2026-06-28 11-43-13" src="https://github.com/user-attachments/assets/240efc84-0642-4a9c-bf3a-783e920518db" />
+
 
 ## 🎮 O Jogo e Seu Funcionamento
 
