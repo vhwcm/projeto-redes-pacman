@@ -1,199 +1,190 @@
-\author{
-Viktor Hugo -- GRR: 20245275\\
-Mauricio Takechi Hirata -- GRR: 20211771
-}
+# Pacman "No Escuro" Remoto (Cliente-Servidor)
 
-# projeto-redes-pacman
+Este projeto consiste na implementação de um jogo de Pacman remoto jogado "no escuro", utilizando uma arquitetura cliente-servidor. A comunicação é realizada diretamente na **Camada de Enlace (Layer 2)** através de **Raw Sockets**, utilizando um protocolo próprio e um controle de fluxo baseado em **Janela Deslizante** (Sliding Window).
 
-Dúvidas a retirar com o parceiro:
+---
 
-- Pacman vai ter 5 vidas. isso tem que estar salvo no servidor
+## 👥 Autores
+* **Viktor Hugo** — GRR: 20245275
+* **Maurício Takechi Hirata** — GRR: 20211771
 
-Adicionado protocolo, recebimento e envio de mensagens
+---
 
-a cada 4 mensagens envia um ak
+## 🎮 O Jogo e Seu Funcionamento
 
-- crc em cima dos dados apenas; da para saber o tamanho dos dados apartir do tamanho
+O jogo consiste em uma versão adaptada do clássico Pacman, executada de forma distribuída.
 
-- mensagem de Ak POR:
-TEMPO: 200ms
-TAMANHO JANELA: 5;
+### Conceito e Dinâmica
+1. **Pacman "No Escuro":** No início, o Pacman possui uma visão extremamente limitada do labirinto, enxergando apenas as casas adjacentes (raio de visualização = 1).
+2. **Expansão da Visão:** A cada 5 movimentos válidos realizados pelo jogador, a visão do Pacman se expande em 1 unidade de raio.
+3. **Labirinto:** O tabuleiro possui dimensões de 40x40.
+   - É carregado na memória do servidor a partir de um arquivo CSV delimitado por `;`.
+   - Se nenhum arquivo for fornecido, o servidor carrega um labirinto padrão com paredes desenhando a sigla **"UFPR"**, distribuindo aleatoriamente o Pacman, os fantasmas e as pastilhas.
+   - Caracteres de representação:
+     - `P`: Pacman
+     - `X`: Parede
+     - `0`: Espaço vazio
+     - `R`, `B`, `G`, `Y`: Fantasmas (Vermelho, Azul, Verde, Amarelo)
+     - `1` a `6`: Pastilhas douradas
 
+### Funcionamento em Rodadas
+O jogo opera de forma síncrona em turnos (rodadas):
+1. O **Cliente** envia a direção desejada para o Pacman (Cima, Baixo, Esquerda ou Direita).
+2. O **Servidor** recebe a jogada, valida e calcula a nova posição do Pacman.
+3. O **Servidor** calcula a movimentação de cada um dos fantasmas de acordo com suas regras específicas.
+4. O **Servidor** gera a nova área visível (matriz de visualização) com base no raio atual do Pacman e a transmite para o cliente.
+5. Se o Pacman coletar uma pastilha ou colidir com um fantasma, arquivos especiais de prêmio ou de colisão são transmitidos pelo servidor.
 
-Temos que ter sequencialização no envio de mensagens ou seja, há de haver uma variavel para guardar a sequencialização do canal de comunicação.
--> é importante que o sistema seja resiliente a falhas (cair conexão, pacote perdido, naks, etc..); 
+### Comportamento dos Fantasmas
+Cada fantasma possui uma inteligência de movimentação distinta:
+* 🔴 **Vermelho (R):** Segue a regra da mão esquerda.
+* 🔵 **Azul (B):** Segue a regra da mão direita.
+* 🟢 **Verde (G):** Alterna entre virar à direita e à esquerda a cada decisão / anda em espiral no sentido horário.
+* 🟡 **Amarelo (Y):** Movimentação puramente aleatória.
 
-Regras:
+### Condição de Vitória e Derrota
+* **Vitória:** O Pacman deve coletar **6 pastilhas douradas**. Cada pastilha corresponde a um prêmio enviado pelo servidor (2 arquivos `.txt`, 2 imagens `.jpg` e 2 vídeos `.mp4`).
+* **Derrota (Game Over):** O Pacman inicia com **5 vidas** (mantidas no servidor). Se colidir com um fantasma, perde uma vida e um arquivo de "encontro com fantasma" (imagem) é transmitido ao cliente. O jogo acaba se as vidas chegarem a 0.
 
-Trabalho PacMan
-• Implementar um jogo de Pacman “no escuro” remoto, na modalidade
-cliente-servidor
-• Em duplas
-• Usar o Cliente em um computador e o servidor em outro
-o Conectar os dois computadores através de um cabo de rede
-diretamente
-• Valor 40,0
-o Bônus não faz a nota do trabalho ultrapassar 40 pontos na média
-• Trabalho deve ser apresentado pelos dois membros da equipe
-o Entregar um relatório impresso no dia da apresentação com uma
-página com as escolhas que a equipe teve que fazer ao longo do
-desenvolvimento
-• Entrega via UFPR Virtual
-o Código fonte e arquivo executável em um arquivo .tgz – nome do
-arquivo deve ser o GRR da dupla
-o Relatório em pdf
-• Respeitar o protocolo de comunicação definido em sala
-• Detalhes implementação:
-o Timeout é obrigatório
-o Controle de Fluxo é Para-e-espera
-o Implementação da transmissão dos arquivos das pastilhas com
-janela deslizante de tamanho 5 gera um bônus de 10%.
-• Obrigatório C ou C++
-• Comunicação por RAWSocket
-o RAWSocket só pode ser executado como root nas máquinas
-Jogo:
-• Labirinto 40x40 – carregado na memória como uma matriz de 40x40
-o O labirinto deve ser lido de um arquivo no início do servidor
-o Arquivo do labirinto é um arquivo csv com os itens separados por ;
-o Caso o usuário não forneça o labirinto, o programa deve carregar o
-labirinto padrão com as paredes com o escrito UFPR e sortear
-aleatoriamente a posição do PacMan, fantasmas, pastilhas.
-o Representações do arquivo do labirinto:
-§ P – PacMan
-§ X – Parede
-§ 0 – Espaços vazios
-§ R – fantasma vermelho
-§ B – fantasma azul
-§ G – fantasma verde
-§ Y – fantasma amarelo
-§ 1 – pastilha dourada arquivo texto (1.txt)
-§ 2 – pastilha dourada arquivo texto (2.txt)
-§ 3 – pastilha dourada arquivo jpg (3.jpg)
-§ 4 – pastilha dourada arquivo jpg (4.jpg)
-§ 5 – pastilha dourada arquivo mp4 (5.mp4)
-§ 6 – pastilha dourada arquivo mp4 (6.mp4)
-• Funciona em rodadas
-• A cada rodada o jogador faz um movimento
-• A cada rodada o servidor calcula um movimento para cada fantasma
-• PacMan deve pegar 6 pastilhas douradas para terminar a fase
-• Cada pastilha dourada corresponde a um arquivo mostrando o prêmio: 2
-arquivos são texto (.txt), 2 são imagens (.jpg) e 2 são vídeos (.mp4)
-• Caso o PacMan encontre um fantasma, deve enviar um arquivo mostrando
-o encontro – arquivo pode ser definido pela dupla
-• A cada 5 movimentos a visualização do PacMan é expandida de 1 no raio
-o No início o PacMan só enxerga uma casa para cada lado ao seu
-redor
-• Movimentos dos fantasmas:
-o Vermelho – regra da mão esquerda
-o Azul – regra da mão direita
-o Verde – alterna direita e esquerda a cada decisão que deve tomar
-o Amarelo – aleatório
+---
 
+## 🔗 Camada de Enlace e Janela Deslizante
 
+Toda a comunicação é baseada no modelo de **Raw Sockets** (`AF_PACKET`, `SOCK_RAW`), permitindo o envio e recebimento de quadros brutos diretamente pela interface de rede física ou virtual. Com isso, contornamos as pilhas UDP/TCP/IP tradicionais da camada de transporte e de rede.
 
-tipos de mensagem:
-0 - ACK
-1 - NACK
-2 - visualização
-3 - inicialização
-4 -> Dados
-5 -> txt
-6 -> jpg
-7 -> mp4
-8 -> fantasma
-9  - Fim de jogo (sucesso)
-10 - direita
-11 - esquerda
-12 - cima
-13 - baixo
-14 - game over
-15 - Erros
-16 - Fim de Transmissão
+### Janela Deslizante (Sliding Window)
+Para a transmissão eficiente de arquivos (pastilhas e encontros com fantasmas), que podem variar de centenas de bytes a alguns megabytes, o projeto implementa o protocolo de **Janela Deslizante com tamanho de janela igual a 5** ($N = 5$).
+* **Timeout:** Definido em **200ms**. Caso o transmissor não receba a confirmação (ACK) de um quadro dentro desse período, ocorre o timeout e a janela é retransmitida.
+* **Controle de Erro:** O receptor valida cada quadro individualmente via **CRC-8** e número de sequência. Se um pacote intermediário for perdido ou corrompido, o receptor descarta os pacotes fora de ordem e pode responder com **NAK**, forçando o transmissor a recuar a janela e retransmitir a partir do pacote perdido.
 
+---
 
-Servidor:
-• Cria / Carrega o mapa inicial
-• Conhece todo o tabuleiro
-• Conecta o Cliente
-• Envia a visualização inicial para o cliente
-• Espera receber movimentações
-• Controla os fantasmas.
-o Verde – Anda em espiral sentido horário
-o Azul – Anda em espiral sentido anti-horário
-o Vermelho – Regra da mão esquerda
-o Amarelo – Regra da mão direita
-• A cada rodada:
-o deve receber o movimento do PacMan
-o calcular a nova posição do PacMan
-o calcular os movimentos dos fantasmas
-o gerar a nova visualização do PacMan
-o enviar a nova visualização para o cliente – pode ser mais de uma
-mensagem
-o se achou pastilha – envia o arquivo correspondente para o cliente
-• Comunicação
-o Recebe a mensagem com a movimentação do PacMan
-o Calcula o novo mapa
-o Gera a nova visualização do PacMan
-o Cria a mensagem e envia para o cliente com a visualização atual
-o Caso o PacMan tenha encontrado uma pastilha ou um fantasma
-deve enviar o arquivo correspondente.
-o Mensagens do servidor para o cliente tem tamanho variável
-§ Se for a nova visualização, ela aumenta a cada 5 jogadas
-§ Se for os arquivos, eles podem ter tamanhos desde algumas
-centenas de bytes até alguns megabytes
-• Log mas mensagens recebidas e enviadas em uma janela separada.
+## 📨 Estrutura do Protocolo de Comunicação
 
-Estrutura da Mensagem
-Campo	Tamanho
-Marcador de Inicio	8 bits
-Tamanho	5 bits
-Sequencia	6 bits
-Tipo	5 bits
-Dados	n bytes
-CRC	8 bits
-Detalhamento
+Cada quadro transmitido na rede possui um **tamanho fixo de 35 bytes**. A carga útil (payload) de dados pode ter até 31 bytes, e o espaço não utilizado é preenchido com bytes nulos (`0x00`).
 
-    Marcador Inicio → 01111110
-    Tamanho → dados
-    Sequencia 
-    CRC → 8 bits
+### Formato do Quadro
 
+| Campo | Tamanho (Bits) | Descrição |
+| :--- | :---: | :--- |
+| **Marcador de Início** | 8 | Sempre `01111110` (`0x7E`) |
+| **Tamanho** | 5 | Número de bytes válidos no campo de dados (0 a 31) |
+| **Sequência** | 6 | Número de sequência do quadro (0 a 63) |
+| **Tipo** | 5 | Código identificador da mensagem (0 a 16) |
+| **Dados** | 248 (31 bytes) | Payload útil da mensagem |
+| **CRC-8** | 8 | Código de redundância cíclica calculado sobre o campo de Dados |
 
-# Como implementar os timeouts:
+### Divisão de Bits dos Bytes de Cabeçalho (Header)
+O cabeçalho ocupa exatamente os 3 primeiros bytes do quadro:
+* **Byte 0:** `0x7E` (Marcador de início)
+* **Byte 1:** `[Tamanho (5 bits) | Sequência MSB (3 bits)]`
+* **Byte 2:** `[Sequência LSB (3 bits) | Tipo (5 bits)]`
 
-Implementando Timeouts
+### Tabela de Tipos de Mensagens
 
-Um timeout, em sua definição mais genérica, é um evento que ocorre após um determinado tempo. Se especifica um determinado tempo, o timeout interval, e depois desse tempo, alguma coisa acontece. No contexto de redes isso é muito relevante, pois existe a chance de enviarmos algo e não obtermos uma confirmação, porque o outro lado não recebeu a nossa mensagem ou porque o outro lado não conseguiu mandar uma mensagem de resposta para nós. O razoável a se fazer é enviar a nossa mensagem novamente caso nenhuma mensagem seja recebida. No caso geral, é provado matematicamente que é impossível ter certeza que o outro lado recebeu a nossa mensagem, esse é o problema dos dois generais, mas não nos custa ao menos tentar.
-Sockets
+| Código (Dec) | Tipo | Descrição |
+| :---: | :--- | :--- |
+| **0** | `ACK` | Confirmação de recebimento bem-sucedido |
+| **1** | `NACK` | Sinalização de erro de recepção / pacote perdido |
+| **2** | `VISUALIZACAO` | Matriz de visualização parcial do labirinto |
+| **3** | `INICIALIZACAO` | Mensagem de início de conexão / partida |
+| **4** | `DADOS` | Bloco de dados genérico |
+| **5** | `TXT` | Dados pertencentes a arquivo de texto |
+| **6** | `JPG` | Dados pertencentes a arquivo de imagem |
+| **7** | `MP4` | Dados pertencentes a arquivo de vídeo |
+| **8** | `FANTASMA` | Arquivo do encontro com o fantasma |
+| **9** | `FIM_JOGO_VITORIA` | Sinalização de fim de jogo com vitória do Pacman |
+| **10** | `DIREITA` | Comando de movimentação para a direita |
+| **11** | `ESQUERDA` | Comando de movimentação para a esquerda |
+| **12** | `CIMA` | Comando de movimentação para cima |
+| **13** | `BAIXO` | Comando de movimentação para baixo |
+| **14** | `GAME_OVER` | Sinalização de fim de jogo com derrota |
+| **15** | `ERROS` | Sinalização de erro geral no protocolo |
+| **16** | `FIM_TRANSMISSAO` | Indica que a transmissão do arquivo ou fluxo atual foi concluída |
 
-Os sockets podem ter timeout nos seus métodos de send e recv, como visto no artigo sobre raw sockets. Porém, isso não é suficiente para reenviarmos a mensagem só quando um determinado tempo passar, porque os raw sockets recebem todos os pacotes da placa de rede. Isso significa que se no meio tempo o seu computador decidir tentar configurar a Internet, o seu socket vai receber todas as mensagens dessa transação, mesmo não sendo as que você quer, e isso significa que o timeout dessas funções nunca funciona, pois ele sempre será reiniciado com essas outras mensagens da rede. A solução é além de usar o timeout no socket, é manter o seu próprio timeout. Isso pode ser feito simplesmente mantendo o seu próprio relógio.
+---
 
-// usando long long pra (tentar) sobreviver ao ano 2038
-long long timestamp() {
-    struct timeval tp;
-    gettimeofday(&tp, NULL);
-    return tp.tv_sec*1000 + tp.tv_usec/1000;
-}
- 
-int protocolo_e_valido(char* buffer, int tamanho_buffer) {
-    if (tamanho_buffer <= 0) { return 0; }
-    // insira a sua validação de protocolo aqui
-    return buffer[0] == 0x7f;
-}
- 
-// retorna -1 se deu timeout, ou quantidade de bytes lidos
-int recebe_mensagem(int soquete, int timeoutMillis, char* buffer, int tamanho_buffer) {
-    long long comeco = timestamp();
-    struct timeval timeout = { .tv_sec = timeoutMillis/1000, .tv_usec = (timeoutMilis%1000) * 1000 };
-    setsockopt(soquete, SOL_SOCKET, SO_RCVTIMEO, (char*) &timeout, sizeof(timeout));
-    int bytes_lidos;
-    do {
-        bytes_lidos = recv(soquete, buffer, tamanho_buffer, 0);
-        if (protocolo_e_valido(buffer, bytes_lidos)) { return bytes_lidos; }
-    } while (timestamp() - comeco <= timeoutMillis);
-    return -1;
-}
+## 🚀 Como Executar o Jogo
 
-Recuo Exponencial
+Como o projeto utiliza **Raw Sockets**, os executáveis precisam de privilégios de superusuário (`root` / `sudo`) para interagir diretamente com as interfaces de rede.
 
-Pode ser útil variar o tempo que se espera pela resposta de forma exponencial. Isso significa que na primeira retransmissão você espera um segundo para receber a mensagem, já na próxima espera dois, e na próxima quatro e assim por diante. Isso ajuda no caso por exemplo de um servidor ficar lento e não conseguir responder todas as mensagens que lhe foram enviadas. Assim, as mensagens vão enfileirando, e se elas chegarem num ritmo constante, o servidor nunca vai conseguir responder todas elas. Esse é o conceito do recuo exponencial, que é implementado em protocolos como o TCP mas se aplica a muito mais lugares, como por exemplo para evitar colisões na rede através da inserção de um componente probabilístico.
+### 1. Compilação
+No diretório raiz do projeto, compile o cliente e o servidor executando:
+```bash
+make
+```
+Para limpar os arquivos intermediários e objetos:
+```bash
+make clean
+```
+
+---
+
+### 2. Inicialização Local (Usando Redes Virtuais - `veth`)
+Se você estiver testando o jogo na mesma máquina, pode criar um par de interfaces de rede virtuais interconectadas (um cabo de rede virtual).
+
+1. **Criar as interfaces virtuais:**
+   Execute o script fornecido no repositório:
+   ```bash
+   sudo ./setup_rede_veth.sh
+   ```
+   *Isso criará as interfaces `veth-srv` e `veth-cli` e as colocará em estado ativo (`UP`).*
+
+2. **Iniciar o Servidor:**
+   Em um terminal, execute o servidor especificando a interface dele:
+   ```bash
+   sudo ./servidor/server veth-srv
+   ```
+
+3. **Iniciar o Cliente:**
+   Em outro terminal, execute o cliente especificando a interface dele:
+   ```bash
+   sudo ./Trabalho_1\(Client_side\)/Pacman_game veth-cli
+   ```
+
+---
+
+### 3. Inicialização Real (Usando Cabo Ethernet Físico)
+Para jogar de fato em dois computadores separados conectados diretamente por um cabo de rede:
+
+1. **Conexão Física:**
+   Conecte um cabo Ethernet (cat5e/cat6) diretamente entre as portas de rede dos dois computadores.
+
+2. **Identificar as Interfaces de Rede:**
+   Em cada máquina, descubra o nome da interface de rede física que está conectada ao cabo. Execute:
+   ```bash
+   ip link
+   ```
+   *(Identifique nomes como `eth0`, `enp3s0`, `enp0s31f6`, etc.)*
+
+3. **Ativar as Interfaces:**
+   Garanta que a interface está ativa em ambas as máquinas:
+   ```bash
+   sudo ip link set dev <nome_da_interface> up
+   ```
+   > [!NOTE]
+   > **Não é necessário configurar endereço IP** (como `192.168.1.X`) nas interfaces de rede. O protocolo funciona puramente na camada de enlace (L2), enviando quadros brutos para o canal.
+
+4. **Executar o Servidor (Máquina A):**
+   ```bash
+   sudo ./servidor/server <interface_da_maquina_A>
+   ```
+
+5. **Executar o Cliente (Máquina B):**
+   ```bash
+   sudo ./Trabalho_1\(Client_side\)/Pacman_game <interface_da_maquina_B>
+   ```
+
+---
+
+## 🛠️ Implementação de Timeouts de Socket (Referência Técnica)
+Para evitar bloqueios indefinidos no recebimento de mensagens devido a perdas de pacotes físicos, foi configurada a opção `SO_RCVTIMEO` no socket:
+
+```c
+struct timeval tv;
+tv.tv_sec = 0;
+tv.tv_usec = 200000; // 200ms
+setsockopt(soquete, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+```
+
+Se a chamada `recv` ou `recvfrom` estourar o tempo limite de 200ms sem receber dados válidos, ela retornará `-1` (com `errno` definido como `EAGAIN` ou `EWOULDBLOCK`), permitindo que a lógica de retransmissão de janela do transmissor entre em ação.
